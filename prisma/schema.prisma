@@ -1,0 +1,81 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  hashedPassword String
+  name           String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  
+  sessions       Session[]
+  accounts       Account[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id
+  userId    String
+  expiresAt DateTime
+  
+  user      User     @relation(references: [id], fields: [userId], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model Account {
+  id        String   @id @default(cuid())
+  name      String
+  type      AccountType
+  balance   Decimal  @default(0) @db.Decimal(12, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  transactionsFrom Transaction[] @relation("FromAccount")
+  transactionsTo   Transaction[] @relation("ToAccount")
+
+  @@map("accounts")
+}
+
+enum AccountType {
+  SAVINGS
+  BUDGET
+  ALLOWANCE
+  RETIREMENT
+  STOCK
+}
+
+model Transaction {
+  id              String   @id @default(cuid())
+  amount          Decimal  @db.Decimal(12, 2)
+  description     String?
+  date            DateTime
+  type            TransactionType
+  takeFromSavings Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  
+  fromAccountId   String?
+  fromAccount     Account? @relation("FromAccount", fields: [fromAccountId], references: [id], onDelete: Cascade)
+  
+  toAccountId     String?
+  toAccount       Account? @relation("ToAccount", fields: [toAccountId], references: [id], onDelete: Cascade)
+
+  @@map("transactions")
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+}
+

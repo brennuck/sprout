@@ -1,0 +1,80 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 46 25% 97%;
+    --foreground: 100 10% 15%;
+    --card: 0 0% 100%;
+    --card-foreground: 100 10% 15%;
+    --primary: 100 18% 42%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 35 45% 85%;
+    --secondary-foreground: 100 10% 15%;
+    --muted: 46 15% 92%;
+    --muted-foreground: 100 5% 45%;
+    --accent: 35 60% 70%;
+    --accent-foreground: 100 10% 15%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 46 20% 88%;
+    --input: 46 20% 88%;
+    --ring: 100 18% 42%;
+    --radius: 0.75rem;
+  }
+  
+  body {
+    @apply bg-gradient-to-br from-cream-50 via-cream-100 to-sage-50 text-sage-900 min-h-screen;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  
+  .glass {
+    @apply bg-white/70 backdrop-blur-lg border border-white/20;
+  }
+  
+  .glass-card {
+    @apply bg-white/80 backdrop-blur-xl border border-white/30 shadow-xl shadow-sage-900/5;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-cream-100;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-sage-300 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-sage-400;
+}
+
+/* Animation delays for staggered effects */
+.animate-delay-100 { animation-delay: 100ms; }
+.animate-delay-200 { animation-delay: 200ms; }
+.animate-delay-300 { animation-delay: 300ms; }
+.animate-delay-400 { animation-delay: 400ms; }
+.animate-delay-500 { animation-delay: 500ms; }
