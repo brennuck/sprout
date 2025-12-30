@@ -80,6 +80,7 @@ export function DashboardContent({ accounts, transactions }: DashboardContentPro
         )}
         <TransactionList
           transactions={transactions}
+          accounts={accounts}
           selectedAccountId={selectedAccountId}
           onDelete={refreshData}
         />
