@@ -68,6 +68,7 @@ export function DashboardContent({ accounts, transactions }: DashboardContentPro
         accounts={accounts}
         selectedAccountId={selectedAccountId}
         onSelectAccount={setSelectedAccountId}
+        onDelete={refreshData}
       />
 
       {/* Summary + Transactions */}

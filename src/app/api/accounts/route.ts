@@ -111,3 +111,39 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Failed to create account" }, { status: 500 });
     }
 }
+
+export async function DELETE(request: Request) {
+    try {
+        const { user } = await validateRequest();
+
+        if (!user) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+
+        const { searchParams } = new URL(request.url);
+        const accountId = searchParams.get("id");
+
+        if (!accountId) {
+            return NextResponse.json({ error: "Account ID is required" }, { status: 400 });
+        }
+
+        // Verify the account belongs to the user
+        const account = await prisma.account.findFirst({
+            where: { id: accountId, userId: user.id },
+        });
+
+        if (!account) {
+            return NextResponse.json({ error: "Account not found" }, { status: 404 });
+        }
+
+        // Delete the account (transactions will be cascade deleted via Prisma schema)
+        await prisma.account.delete({
+            where: { id: accountId },
+        });
+
+        return NextResponse.json({ success: true });
+    } catch (error) {
+        console.error("Delete account error:", error);
+        return NextResponse.json({ error: "Failed to delete account" }, { status: 500 });
+    }
+}
