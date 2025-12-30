@@ -7,71 +7,58 @@ import { TransactionList } from "./TransactionList";
 import { TransactionForm } from "./TransactionForm";
 import { AccountForm } from "./AccountForm";
 import { Summary } from "./Summary";
-import { DataActions } from "./DataActions";
 import type { AccountWithBalance, TransactionData } from "@/app/(dashboard)/dashboard/page";
 
 interface DashboardContentProps {
-  accounts: AccountWithBalance[];
-  transactions: TransactionData[];
+    accounts: AccountWithBalance[];
+    transactions: TransactionData[];
 }
 
 export function DashboardContent({ accounts, transactions }: DashboardContentProps) {
-  const router = useRouter();
-  const [selectedAccountId, setSelectedAccountId] = useState<string>(
-    accounts[0]?.id || ""
-  );
+    const router = useRouter();
+    const [selectedAccountId, setSelectedAccountId] = useState<string>(accounts[0]?.id || "");
 
-  const refreshData = () => {
-    router.refresh();
-  };
+    const refreshData = () => {
+        router.refresh();
+    };
 
-  const selectedAccount = accounts.find((a) => a.id === selectedAccountId);
+    const selectedAccount = accounts.find((a) => a.id === selectedAccountId);
 
-  return (
-    <>
-      <AccountsOverview
-        accounts={accounts}
-        selectedAccountId={selectedAccountId}
-        onSelectAccount={setSelectedAccountId}
-      />
-
-      {accounts.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 space-y-6">
-            {selectedAccountId && (
-              <Summary
-                transactions={transactions}
+    return (
+        <>
+            <AccountsOverview
+                accounts={accounts}
                 selectedAccountId={selectedAccountId}
-              />
-            )}
-            <TransactionList
-              transactions={transactions}
-              selectedAccountId={selectedAccountId}
+                onSelectAccount={setSelectedAccountId}
             />
-          </div>
 
-          <div className="space-y-6">
-            {selectedAccountId && selectedAccount && (
-              <TransactionForm
-                selectedAccountId={selectedAccountId}
-                selectedAccountName={selectedAccount.name}
-                selectedAccountType={selectedAccount.type}
-                onSuccess={refreshData}
-              />
+            {accounts.length > 0 && (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div className="lg:col-span-2 space-y-6">
+                        {selectedAccountId && (
+                            <Summary transactions={transactions} selectedAccountId={selectedAccountId} />
+                        )}
+                        <TransactionList
+                            transactions={transactions}
+                            selectedAccountId={selectedAccountId}
+                            onDelete={refreshData}
+                        />
+                    </div>
+
+                    <div className="space-y-6">
+                        {selectedAccountId && selectedAccount && (
+                            <TransactionForm
+                                selectedAccountId={selectedAccountId}
+                                selectedAccountName={selectedAccount.name}
+                                onSuccess={refreshData}
+                            />
+                        )}
+                        <AccountForm onSuccess={refreshData} />
+                    </div>
+                </div>
             )}
-            <AccountForm onSuccess={refreshData} />
-            <DataActions onSuccess={refreshData} />
-          </div>
-        </div>
-      )}
 
-      {accounts.length === 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <AccountForm onSuccess={refreshData} />
-          <DataActions onSuccess={refreshData} />
-        </div>
-      )}
-    </>
-  );
+            {accounts.length === 0 && <AccountForm onSuccess={refreshData} />}
+        </>
+    );
 }
-

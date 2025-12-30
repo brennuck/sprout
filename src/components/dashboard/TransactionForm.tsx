@@ -6,25 +6,22 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { RadioGroup } from "@/components/ui/RadioGroup";
-import { Checkbox } from "@/components/ui/Checkbox";
 
 interface TransactionFormProps {
   selectedAccountId: string;
   selectedAccountName: string;
-  selectedAccountType: string;
   onSuccess: () => void;
 }
 
 export function TransactionForm({
   selectedAccountId,
   selectedAccountName,
-  selectedAccountType,
   onSuccess,
 }: TransactionFormProps) {
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [type, setType] = useState<"EXPENSE" | "INCOME">("EXPENSE");
-  const [takeFromSavings, setTakeFromSavings] = useState(true);
+  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -45,10 +42,10 @@ export function TransactionForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           description,
-          amount: parseFloat(amount) * (type === "EXPENSE" ? -1 : 1),
+          amount: parseFloat(amount),
           type,
           accountId: selectedAccountId,
-          takeFromSavings: selectedAccountType !== "SAVINGS" && takeFromSavings,
+          date,
         }),
       });
 
@@ -59,7 +56,7 @@ export function TransactionForm({
 
       setDescription("");
       setAmount("");
-      setTakeFromSavings(true);
+      setDate(new Date().toISOString().split("T")[0]);
       onSuccess();
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
@@ -99,7 +96,7 @@ export function TransactionForm({
           label="Description"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder="Enter description"
+          placeholder="e.g., Groceries, Paycheck"
         />
 
         <Input
@@ -112,13 +109,12 @@ export function TransactionForm({
           min="0"
         />
 
-        {selectedAccountType !== "SAVINGS" && (
-          <Checkbox
-            label="Take from savings"
-            checked={takeFromSavings}
-            onChange={(e) => setTakeFromSavings(e.target.checked)}
-          />
-        )}
+        <Input
+          label="Date"
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+        />
 
         <Button type="submit" className="w-full" isLoading={isLoading}>
           <PlusCircle className="w-4 h-4" />
@@ -128,4 +124,3 @@ export function TransactionForm({
     </Card>
   );
 }
-

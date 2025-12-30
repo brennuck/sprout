@@ -4,11 +4,11 @@ import { prisma } from "@/lib/prisma";
 import { validateRequest } from "@/lib/auth";
 
 const createTransactionSchema = z.object({
-  amount: z.number(),
-  description: z.string().optional(),
+  amount: z.number().positive("Amount must be positive"),
+  description: z.string().min(1, "Description is required"),
   type: z.enum(["INCOME", "EXPENSE"]),
   accountId: z.string(),
-  takeFromSavings: z.boolean().optional().default(false),
+  date: z.string().optional(),
 });
 
 export async function GET() {
@@ -21,12 +21,14 @@ export async function GET() {
 
     const transactions = await prisma.transaction.findMany({
       where: {
-        OR: [
-          { fromAccount: { userId: user.id } },
-          { toAccount: { userId: user.id } },
-        ],
+        account: { userId: user.id },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: { date: "desc" },
+      include: {
+        account: {
+          select: { name: true },
+        },
+      },
     });
 
     return NextResponse.json(transactions);
@@ -57,7 +59,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const { amount, description, type, accountId, takeFromSavings } = result.data;
+    const { amount, description, type, accountId, date } = result.data;
 
     // Verify account belongs to user
     const account = await prisma.account.findFirst({
@@ -68,49 +70,29 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Account not found" }, { status: 404 });
     }
 
-    // Create transaction and update balances in a transaction
+    // Calculate the balance change (negative for expenses)
+    const balanceChange = type === "EXPENSE" ? -amount : amount;
+
+    // Create transaction and update balance atomically
     const transaction = await prisma.$transaction(async (tx) => {
-      // Create the transaction record
       const newTransaction = await tx.transaction.create({
         data: {
-          amount: Math.abs(amount),
+          amount,
           description,
-          date: new Date(),
+          date: date ? new Date(date) : new Date(),
           type,
-          takeFromSavings,
-          ...(type === "EXPENSE"
-            ? { fromAccountId: accountId }
-            : { toAccountId: accountId }),
+          accountId,
         },
       });
 
-      // Update account balance
       await tx.account.update({
         where: { id: accountId },
         data: {
           balance: {
-            increment: amount, // amount is already negative for expenses
+            increment: balanceChange,
           },
         },
       });
-
-      // Handle savings account update if applicable
-      if (takeFromSavings && account.type !== "SAVINGS") {
-        const savingsAccount = await tx.account.findFirst({
-          where: { userId: user.id, type: "SAVINGS" },
-        });
-
-        if (savingsAccount) {
-          await tx.account.update({
-            where: { id: savingsAccount.id },
-            data: {
-              balance: {
-                decrement: amount, // opposite of main account
-              },
-            },
-          });
-        }
-      }
 
       return newTransaction;
     });
@@ -125,3 +107,59 @@ export async function POST(request: Request) {
   }
 }
 
+export async function DELETE(request: Request) {
+  try {
+    const { user } = await validateRequest();
+
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const transactionId = searchParams.get("id");
+
+    if (!transactionId) {
+      return NextResponse.json({ error: "Transaction ID required" }, { status: 400 });
+    }
+
+    // Get transaction and verify ownership
+    const transaction = await prisma.transaction.findFirst({
+      where: {
+        id: transactionId,
+        account: { userId: user.id },
+      },
+    });
+
+    if (!transaction) {
+      return NextResponse.json({ error: "Transaction not found" }, { status: 404 });
+    }
+
+    // Reverse the balance change and delete
+    const balanceChange = transaction.type === "EXPENSE" 
+      ? Number(transaction.amount) 
+      : -Number(transaction.amount);
+
+    await prisma.$transaction(async (tx) => {
+      await tx.account.update({
+        where: { id: transaction.accountId! },
+        data: {
+          balance: {
+            increment: balanceChange,
+          },
+        },
+      });
+
+      await tx.transaction.delete({
+        where: { id: transactionId },
+      });
+    });
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Delete transaction error:", error);
+    return NextResponse.json(
+      { error: "Failed to delete transaction" },
+      { status: 500 }
+    );
+  }
+}

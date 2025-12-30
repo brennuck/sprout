@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowDownCircle, ArrowUpCircle, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowDownCircle, ArrowUpCircle, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -10,18 +10,16 @@ import type { TransactionData } from "@/app/(dashboard)/dashboard/page";
 interface TransactionListProps {
   transactions: TransactionData[];
   selectedAccountId?: string;
+  onDelete?: () => void;
 }
 
-export function TransactionList({ transactions, selectedAccountId }: TransactionListProps) {
+export function TransactionList({ transactions, selectedAccountId, onDelete }: TransactionListProps) {
   const [currentPage, setCurrentPage] = useState(1);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const transactionsPerPage = 10;
 
   const filteredTransactions = selectedAccountId
-    ? transactions.filter(
-        (t) =>
-          t.fromAccountId === selectedAccountId ||
-          t.toAccountId === selectedAccountId
-      )
+    ? transactions.filter((t) => t.accountId === selectedAccountId)
     : transactions;
 
   const indexOfLastTransaction = currentPage * transactionsPerPage;
@@ -45,6 +43,27 @@ export function TransactionList({ transactions, selectedAccountId }: Transaction
     }
   };
 
+  const handleDelete = async (transactionId: string) => {
+    if (!confirm("Are you sure you want to delete this transaction?")) {
+      return;
+    }
+
+    setDeletingId(transactionId);
+    try {
+      const res = await fetch(`/api/transactions?id=${transactionId}`, {
+        method: "DELETE",
+      });
+
+      if (res.ok) {
+        onDelete?.();
+      }
+    } catch (error) {
+      console.error("Delete error:", error);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   return (
     <Card>
       <h3 className="text-lg font-semibold text-sage-900 mb-4">
@@ -61,11 +80,10 @@ export function TransactionList({ transactions, selectedAccountId }: Transaction
       ) : (
         <ul className="divide-y divide-sage-100">
           {currentTransactions.map((transaction) => {
-            const isExpense = transaction.type === "EXPENSE" || 
-              (transaction.fromAccountId === selectedAccountId);
+            const isExpense = transaction.type === "EXPENSE";
             
             return (
-              <li key={transaction.id} className="py-4 first:pt-0 last:pb-0">
+              <li key={transaction.id} className="py-4 first:pt-0 last:pb-0 group">
                 <div className="flex items-center gap-4">
                   <div className="flex-shrink-0">
                     {isExpense ? (
@@ -80,13 +98,13 @@ export function TransactionList({ transactions, selectedAccountId }: Transaction
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-sage-900 truncate">
-                      {transaction.description || "No description"}
+                      {transaction.description}
                     </p>
                     <p className="text-sm text-sage-500">
                       {formatDate(transaction.date)}
                     </p>
                   </div>
-                  <div className="flex-shrink-0">
+                  <div className="flex items-center gap-3">
                     <span
                       className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
                         isExpense
@@ -95,8 +113,16 @@ export function TransactionList({ transactions, selectedAccountId }: Transaction
                       }`}
                     >
                       {isExpense ? "-" : "+"}
-                      {formatCurrency(Math.abs(transaction.amount))}
+                      {formatCurrency(transaction.amount)}
                     </span>
+                    <button
+                      onClick={() => handleDelete(transaction.id)}
+                      disabled={deletingId === transaction.id}
+                      className="opacity-0 group-hover:opacity-100 p-1.5 text-sage-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                      title="Delete transaction"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
               </li>
@@ -133,4 +159,3 @@ export function TransactionList({ transactions, selectedAccountId }: Transaction
     </Card>
   );
 }
-

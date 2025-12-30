@@ -13,12 +13,10 @@ export interface AccountWithBalance {
 export interface TransactionData {
     id: string;
     amount: number;
-    description: string | null;
+    description: string;
     date: Date;
     type: string;
-    takeFromSavings: boolean;
-    fromAccountId: string | null;
-    toAccountId: string | null;
+    accountId: string;
     createdAt: Date;
 }
 
@@ -42,9 +40,9 @@ export default async function DashboardPage() {
         }),
         prisma.transaction.findMany({
             where: {
-                OR: [{ fromAccount: { userId: user.id } }, { toAccount: { userId: user.id } }],
+                account: { userId: user.id },
             },
-            orderBy: { createdAt: "desc" },
+            orderBy: { date: "desc" },
         }),
     ]);
 
@@ -62,9 +60,7 @@ export default async function DashboardPage() {
         description: t.description,
         date: t.date,
         type: t.type,
-        takeFromSavings: t.takeFromSavings,
-        fromAccountId: t.fromAccountId,
-        toAccountId: t.toAccountId,
+        accountId: t.accountId,
         createdAt: t.createdAt,
     }));
 
