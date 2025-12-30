@@ -21,6 +21,16 @@ export interface TransactionData {
     createdAt: Date;
 }
 
+export interface SharedDashboard {
+    id: string;
+    ownerId: string;
+    ownerName: string;
+    ownerEmail: string;
+    permission: string;
+    accounts: AccountWithBalance[];
+    transactions: TransactionData[];
+}
+
 function serializeDecimal(value: Decimal | null): number {
     if (!value) return 0;
     return parseFloat(value.toString());
@@ -33,8 +43,8 @@ export default async function DashboardPage() {
         return null;
     }
 
-    // Fetch accounts and transactions
-    const [accounts, transactions] = await Promise.all([
+    // Fetch user's own accounts and transactions
+    const [accounts, transactions, sharedWithMe] = await Promise.all([
         prisma.account.findMany({
             where: { userId: user.id },
             orderBy: { createdAt: "asc" },
@@ -45,9 +55,25 @@ export default async function DashboardPage() {
             },
             orderBy: { date: "desc" },
         }),
+        // Get dashboards shared with me
+        prisma.dashboardShare.findMany({
+            where: { viewerId: user.id },
+            include: {
+                owner: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true,
+                        accounts: {
+                            orderBy: { createdAt: "asc" },
+                        },
+                    },
+                },
+            },
+        }),
     ]);
 
-    // Serialize the data
+    // Serialize my data
     const serializedAccounts: AccountWithBalance[] = accounts.map((account) => ({
         id: account.id,
         name: account.name,
@@ -66,6 +92,40 @@ export default async function DashboardPage() {
         createdAt: t.createdAt,
     }));
 
+    // Serialize shared dashboards
+    const sharedDashboards: SharedDashboard[] = await Promise.all(
+        sharedWithMe.map(async (share) => {
+            const ownerTransactions = await prisma.transaction.findMany({
+                where: { account: { userId: share.ownerId } },
+                orderBy: { date: "desc" },
+            });
+
+            return {
+                id: share.id,
+                ownerId: share.ownerId,
+                ownerName: share.owner.name || share.owner.email,
+                ownerEmail: share.owner.email,
+                permission: share.permission,
+                accounts: share.owner.accounts.map((account) => ({
+                    id: account.id,
+                    name: account.name,
+                    type: account.type,
+                    balance: serializeDecimal(account.balance),
+                })),
+                transactions: ownerTransactions.map((t) => ({
+                    id: t.id,
+                    amount: serializeDecimal(t.amount),
+                    description: t.description,
+                    date: t.date,
+                    type: t.type,
+                    accountId: t.accountId,
+                    transferToAccountId: t.transferToAccountId,
+                    createdAt: t.createdAt,
+                })),
+            };
+        })
+    );
+
     return (
         <div className="space-y-8">
             <div>
@@ -75,7 +135,11 @@ export default async function DashboardPage() {
                 <p className="text-sage-600 mt-1">Here&apos;s how your garden is growing 🌱</p>
             </div>
 
-            <DashboardContent accounts={serializedAccounts} transactions={serializedTransactions} />
+            <DashboardContent
+                accounts={serializedAccounts}
+                transactions={serializedTransactions}
+                sharedDashboards={sharedDashboards}
+            />
         </div>
     );
 }

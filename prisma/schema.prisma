@@ -17,8 +17,59 @@ model User {
   
   sessions       Session[]
   accounts       Account[]
+  
+  // Sharing relationships
+  sharedWithMe   DashboardShare[] @relation("SharedWith")
+  sharedByMe     DashboardShare[] @relation("SharedBy")
+  sentInvites    Invitation[]     @relation("InviteSender")
+  receivedInvites Invitation[]    @relation("InviteRecipient")
 
   @@map("users")
+}
+
+model DashboardShare {
+  id          String         @id @default(cuid())
+  permission  SharePermission @default(VIEW)
+  createdAt   DateTime       @default(now())
+  
+  ownerId     String
+  owner       User           @relation("SharedBy", fields: [ownerId], references: [id], onDelete: Cascade)
+  
+  viewerId    String
+  viewer      User           @relation("SharedWith", fields: [viewerId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerId, viewerId])
+  @@map("dashboard_shares")
+}
+
+model Invitation {
+  id          String           @id @default(cuid())
+  email       String
+  permission  SharePermission  @default(VIEW)
+  status      InvitationStatus @default(PENDING)
+  createdAt   DateTime         @default(now())
+  expiresAt   DateTime
+  
+  senderId    String
+  sender      User             @relation("InviteSender", fields: [senderId], references: [id], onDelete: Cascade)
+  
+  // If the invited email matches an existing user
+  recipientId String?
+  recipient   User?            @relation("InviteRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@map("invitations")
+}
+
+enum SharePermission {
+  VIEW
+  EDIT
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
 }
 
 model Session {
