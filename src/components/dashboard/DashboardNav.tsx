@@ -37,15 +37,16 @@ export function DashboardNav({ user, pendingInvitations = 0 }: DashboardNavProps
               </span>
             </Link>
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 sm:gap-4">
               <div className="relative">
                 <Button 
                   variant="outline" 
                   size="sm" 
                   onClick={() => setIsShareModalOpen(true)}
+                  className="px-2 sm:px-3"
                 >
                   <Users className="w-4 h-4" />
-                  Share
+                  <span className="hidden sm:inline">Share</span>
                 </Button>
                 {pendingInvitations > 0 && (
                   <span className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-sage-500 text-[10px] font-bold text-white ring-2 ring-white">
@@ -53,15 +54,15 @@ export function DashboardNav({ user, pendingInvitations = 0 }: DashboardNavProps
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-2 text-sage-600">
+              <div className="hidden md:flex items-center gap-2 text-sage-600">
                 <UserIcon className="w-4 h-4" />
-                <span className="text-sm font-medium">
+                <span className="text-sm font-medium truncate max-w-[150px]">
                   {user.name || user.email}
                 </span>
               </div>
-              <Button variant="ghost" size="sm" onClick={handleSignOut}>
+              <Button variant="ghost" size="sm" onClick={handleSignOut} className="px-2 sm:px-3">
                 <LogOut className="w-4 h-4" />
-                Sign Out
+                <span className="hidden sm:inline">Sign Out</span>
               </Button>
             </div>
           </div>
