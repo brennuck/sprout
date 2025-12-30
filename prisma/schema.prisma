@@ -42,7 +42,8 @@ model Account {
   userId    String
   user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   
-  transactions Transaction[]
+  transactions    Transaction[] @relation("AccountTransactions")
+  transfersTo     Transaction[] @relation("TransferToAccount")
 
   @@map("accounts")
 }
@@ -63,8 +64,13 @@ model Transaction {
   type        TransactionType
   createdAt   DateTime        @default(now())
   
+  // Primary account (source for transfers/expenses, destination for income)
   accountId   String
-  account     Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  account     Account         @relation("AccountTransactions", fields: [accountId], references: [id], onDelete: Cascade)
+  
+  // For transfers: the destination account
+  transferToAccountId String?
+  transferToAccount   Account? @relation("TransferToAccount", fields: [transferToAccountId], references: [id], onDelete: SetNull)
 
   @@map("transactions")
 }
@@ -72,4 +78,5 @@ model Transaction {
 enum TransactionType {
   INCOME
   EXPENSE
+  TRANSFER
 }

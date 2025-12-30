@@ -17,6 +17,7 @@ export interface TransactionData {
     date: Date;
     type: string;
     accountId: string;
+    transferToAccountId: string | null;
     createdAt: Date;
 }
 
@@ -61,6 +62,7 @@ export default async function DashboardPage() {
         date: t.date,
         type: t.type,
         accountId: t.accountId,
+        transferToAccountId: t.transferToAccountId,
         createdAt: t.createdAt,
     }));
 

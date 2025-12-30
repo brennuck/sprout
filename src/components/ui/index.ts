@@ -4,4 +4,5 @@ export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 export { Select, type SelectProps } from "./Select";
 export { Checkbox, type CheckboxProps } from "./Checkbox";
 export { RadioGroup } from "./RadioGroup";
+export { Modal } from "./Modal";
 
