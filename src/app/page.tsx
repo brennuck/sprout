@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Sprout, ArrowRight, PiggyBank, TrendingUp, Shield, BarChart3, Wallet, Leaf, Sparkles, MessageSquare, Brain, Zap } from "lucide-react";
+import { Sprout, ArrowRight, PiggyBank, TrendingUp, Shield, BarChart3, Wallet, Leaf, Sparkles, MessageSquare, Brain, Zap, Users, ArrowRightLeft, Layers } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { validateRequest } from "@/lib/auth";
 
@@ -122,14 +122,28 @@ export default async function HomePage() {
 
                                 <div className="bg-white rounded-2xl p-6 shadow-lg">
                                     <div className="flex items-center gap-3 mb-4">
-                                        <div className="p-2 bg-sage-100 rounded-lg">
-                                            <BarChart3 className="w-5 h-5 text-sage-600" />
+                                        <div className="p-2 bg-blue-100 rounded-lg">
+                                            <Users className="w-5 h-5 text-blue-600" />
                                         </div>
-                                        <span className="font-medium text-sage-800">Spending</span>
+                                        <span className="font-medium text-sage-800">Shared</span>
                                     </div>
-                                    <p className="text-3xl font-bold text-sage-900 mb-1">$1,660</p>
-                                    <p className="text-sage-500 text-sm">23 transactions</p>
+                                    <p className="text-xl font-bold text-sage-900 mb-1">2 people</p>
+                                    <p className="text-sage-500 text-sm">Viewing your dashboard</p>
                                 </div>
+                            </div>
+
+                            {/* Transfer preview */}
+                            <div className="mt-6 bg-sage-50 rounded-xl p-4 flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-blue-100 rounded-lg">
+                                        <ArrowRightLeft className="w-4 h-4 text-blue-500" />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-medium text-sage-900">Transfer to Budget</p>
+                                        <p className="text-xs text-sage-500">From Savings • Just now</p>
+                                    </div>
+                                </div>
+                                <span className="text-sm font-semibold text-blue-600">-$500.00</span>
                             </div>
                         </div>
                     </div>
@@ -174,12 +188,45 @@ export default async function HomePage() {
 
                         <div className="glass-card p-8 rounded-2xl group hover:-translate-y-1 transition-all duration-300">
                             <div className="p-3 bg-sage-100 rounded-xl w-fit mb-5 group-hover:bg-sage-200 transition-colors">
+                                <ArrowRightLeft className="w-6 h-6 text-sage-600" />
+                            </div>
+                            <h3 className="text-xl font-semibold text-sage-900 mb-3">Easy Transfers</h3>
+                            <p className="text-sage-600">
+                                Move money between accounts instantly. Transfer from savings to budget, or fund new
+                                accounts with a starting balance.
+                            </p>
+                        </div>
+
+                        <div className="glass-card p-8 rounded-2xl group hover:-translate-y-1 transition-all duration-300">
+                            <div className="p-3 bg-blue-100 rounded-xl w-fit mb-5 group-hover:bg-blue-200 transition-colors">
+                                <Users className="w-6 h-6 text-blue-600" />
+                            </div>
+                            <h3 className="text-xl font-semibold text-sage-900 mb-3">Share with Family</h3>
+                            <p className="text-sage-600">
+                                Invite family members or partners to view or edit your dashboard. Perfect for
+                                managing household finances together.
+                            </p>
+                        </div>
+
+                        <div className="glass-card p-8 rounded-2xl group hover:-translate-y-1 transition-all duration-300">
+                            <div className="p-3 bg-cream-100 rounded-xl w-fit mb-5 group-hover:bg-cream-200 transition-colors">
+                                <Layers className="w-6 h-6 text-cream-600" />
+                            </div>
+                            <h3 className="text-xl font-semibold text-sage-900 mb-3">Quick Actions</h3>
+                            <p className="text-sage-600">
+                                Add transactions, transfers, or new accounts with beautiful modal forms. No more
+                                endless scrolling—everything&apos;s one click away.
+                            </p>
+                        </div>
+
+                        <div className="glass-card p-8 rounded-2xl group hover:-translate-y-1 transition-all duration-300">
+                            <div className="p-3 bg-sage-100 rounded-xl w-fit mb-5 group-hover:bg-sage-200 transition-colors">
                                 <Shield className="w-6 h-6 text-sage-600" />
                             </div>
                             <h3 className="text-xl font-semibold text-sage-900 mb-3">Your Data, Safe</h3>
                             <p className="text-sage-600">
-                                Your financial data stays secure with encryption and authentication. Download or backup
-                                anytime you want.
+                                Your financial data stays secure with encryption and authentication. Control who
+                                sees what with permission levels.
                             </p>
                         </div>
                     </div>
