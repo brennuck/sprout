@@ -1,21 +1,92 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { X, Sparkles } from "lucide-react";
+import { X, Sparkles, Send, Loader2 } from "lucide-react";
+
+interface Message {
+    role: "user" | "assistant";
+    content: string;
+}
 
 export function Bud() {
+    const router = useRouter();
     const [isOpen, setIsOpen] = useState(false);
     const [isHovered, setIsHovered] = useState(false);
+    const [messages, setMessages] = useState<Message[]>([]);
+    const [input, setInput] = useState("");
+    const [isLoading, setIsLoading] = useState(false);
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    // Scroll to bottom when messages change
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [messages]);
+
+    // Focus input when opened
+    useEffect(() => {
+        if (isOpen) {
+            setTimeout(() => inputRef.current?.focus(), 100);
+        }
+    }, [isOpen]);
+
+    const sendMessage = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!input.trim() || isLoading) return;
+
+        const userMessage = input.trim();
+        setInput("");
+        setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
+        setIsLoading(true);
+
+        try {
+            const res = await fetch("/api/chat", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    message: userMessage,
+                    history: messages,
+                }),
+            });
+
+            const data = await res.json();
+
+            if (res.ok) {
+                setMessages((prev) => [...prev, { role: "assistant", content: data.reply }]);
+
+                // Refresh the dashboard if an action was performed
+                if (data.actionPerformed) {
+                    router.refresh();
+                }
+            } else {
+                setMessages((prev) => [
+                    ...prev,
+                    { role: "assistant", content: "Oops! Something went wrong. Try again! 🌱" },
+                ]);
+            }
+        } catch {
+            setMessages((prev) => [
+                ...prev,
+                { role: "assistant", content: "Hmm, I couldn't reach the garden. Check your connection! 🌿" },
+            ]);
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     return (
         <>
             {/* Bud's Chat Panel */}
             {isOpen && (
                 <div className="fixed bottom-28 right-6 w-80 sm:w-96 z-50 animate-slide-up">
-                    <div className="bg-white rounded-2xl shadow-2xl border border-sage-200 overflow-hidden">
+                    <div
+                        className="bg-white rounded-2xl shadow-2xl border border-sage-200 overflow-hidden flex flex-col"
+                        style={{ maxHeight: "500px" }}
+                    >
                         {/* Header */}
-                        <div className="bg-gradient-to-r from-sage-600 to-sage-500 p-4 flex items-center justify-between">
+                        <div className="bg-gradient-to-r from-sage-600 to-sage-500 p-4 flex items-center justify-between flex-shrink-0">
                             <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-full bg-cream-100 overflow-hidden flex items-center justify-center">
                                     <Image
@@ -42,8 +113,9 @@ export function Bud() {
                             </button>
                         </div>
 
-                        {/* Chat Content */}
-                        <div className="p-4 min-h-[200px] bg-cream-50">
+                        {/* Chat Messages */}
+                        <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-cream-50 min-h-[200px]">
+                            {/* Welcome message */}
                             <div className="flex gap-3">
                                 <div className="w-8 h-8 rounded-full bg-cream-100 overflow-hidden flex items-center justify-center flex-shrink-0">
                                     <Image
@@ -54,27 +126,91 @@ export function Bud() {
                                         className="object-cover scale-[1.8] translate-y-0.5"
                                     />
                                 </div>
-                                <div className="bg-white rounded-2xl rounded-tl-sm p-3 shadow-sm border border-sage-100">
-                                    <p className="text-sage-700 text-sm">Howdy there, friend! 🌿</p>
-                                    <p className="text-sage-600 text-sm mt-2">
-                                        I&apos;m Bud, your personal gardener! I&apos;m still getting my tools ready, but
-                                        soon I&apos;ll be able to help you manage your finances with just a few words!
-                                    </p>
-                                    <p className="text-sage-500 text-xs mt-3 italic">
-                                        Coming soon: Just tell me what you spent, and I&apos;ll plant it right in your
-                                        garden! 🌱
+                                <div className="bg-white rounded-2xl rounded-tl-sm p-3 shadow-sm border border-sage-100 max-w-[85%]">
+                                    <p className="text-sage-700 text-sm">
+                                        Howdy there, friend! 🌿 I&apos;m Bud, your personal gardener. Ask me about your
+                                        finances or tell me about a purchase!
                                     </p>
                                 </div>
                             </div>
+
+                            {/* Message history */}
+                            {messages.map((msg, i) => (
+                                <div key={i} className={`flex gap-3 ${msg.role === "user" ? "justify-end" : ""}`}>
+                                    {msg.role === "assistant" && (
+                                        <div className="w-8 h-8 rounded-full bg-cream-100 overflow-hidden flex items-center justify-center flex-shrink-0">
+                                            <Image
+                                                src="/bud.png"
+                                                alt="Bud"
+                                                width={32}
+                                                height={32}
+                                                className="object-cover scale-[1.8] translate-y-0.5"
+                                            />
+                                        </div>
+                                    )}
+                                    <div
+                                        className={`rounded-2xl p-3 max-w-[85%] ${
+                                            msg.role === "user"
+                                                ? "bg-sage-500 text-white rounded-tr-sm"
+                                                : "bg-white shadow-sm border border-sage-100 rounded-tl-sm"
+                                        }`}
+                                    >
+                                        <p
+                                            className={`text-sm whitespace-pre-wrap ${
+                                                msg.role === "assistant" ? "text-sage-700" : ""
+                                            }`}
+                                        >
+                                            {msg.content}
+                                        </p>
+                                    </div>
+                                </div>
+                            ))}
+
+                            {/* Loading indicator */}
+                            {isLoading && (
+                                <div className="flex gap-3">
+                                    <div className="w-8 h-8 rounded-full bg-cream-100 overflow-hidden flex items-center justify-center flex-shrink-0">
+                                        <Image
+                                            src="/bud.png"
+                                            alt="Bud"
+                                            width={32}
+                                            height={32}
+                                            className="object-cover scale-[1.8] translate-y-0.5"
+                                        />
+                                    </div>
+                                    <div className="bg-white rounded-2xl rounded-tl-sm p-3 shadow-sm border border-sage-100">
+                                        <div className="flex items-center gap-2 text-sage-500">
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                            <span className="text-sm">Thinking...</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div ref={messagesEndRef} />
                         </div>
 
-                        {/* Coming Soon Input */}
-                        <div className="p-3 border-t border-sage-100 bg-white">
-                            <div className="flex items-center gap-2 p-3 bg-sage-50 rounded-xl text-sage-400 text-sm">
-                                <Sparkles className="w-4 h-4" />
-                                <span>AI features coming soon...</span>
+                        {/* Input */}
+                        <form onSubmit={sendMessage} className="p-3 border-t border-sage-100 bg-white flex-shrink-0">
+                            <div className="flex items-center gap-2">
+                                <input
+                                    ref={inputRef}
+                                    type="text"
+                                    value={input}
+                                    onChange={(e) => setInput(e.target.value)}
+                                    placeholder="Tell Bud what you spent..."
+                                    className="flex-1 px-4 py-2.5 bg-sage-50 rounded-xl text-sm text-sage-900 placeholder:text-sage-400 focus:outline-none focus:ring-2 focus:ring-sage-300"
+                                    disabled={isLoading}
+                                />
+                                <button
+                                    type="submit"
+                                    disabled={!input.trim() || isLoading}
+                                    className="p-2.5 bg-sage-500 text-white rounded-xl hover:bg-sage-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    <Send className="w-4 h-4" />
+                                </button>
                             </div>
-                        </div>
+                        </form>
                     </div>
                 </div>
             )}
