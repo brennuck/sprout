@@ -233,7 +233,7 @@ export default async function HomePage() {
                 </div>
             </section>
 
-            {/* AI Coming Soon Section */}
+            {/* Meet Bud - AI Section */}
             <section className="py-24 relative overflow-hidden">
                 {/* Background */}
                 <div className="absolute inset-0 bg-gradient-to-br from-sage-900 via-sage-800 to-sage-900" />
@@ -245,47 +245,55 @@ export default async function HomePage() {
 
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
                     <div className="text-center mb-16">
-                        <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur rounded-full text-sage-200 text-sm font-medium mb-6">
+                        <div className="inline-flex items-center gap-2 px-4 py-2 bg-cream-400/20 backdrop-blur rounded-full text-cream-200 text-sm font-medium mb-6">
                             <Sparkles className="w-4 h-4" />
-                            Coming Soon
+                            AI-Powered
                         </div>
                         <h2 className="font-display text-3xl sm:text-4xl font-bold text-white mb-4">
-                            AI-Powered Budgeting
+                            Meet Bud, Your Personal Gardener 🌱
                         </h2>
                         <p className="text-lg text-sage-300 max-w-2xl mx-auto">
-                            Let AI do the heavy lifting. Just tell Sprout what happened, and watch the magic.
+                            Just tell Bud what you spent, and he&apos;ll handle the rest. It&apos;s like having a friendly gardener for your finances.
                         </p>
                     </div>
 
-                    {/* AI Input Demo */}
+                    {/* AI Demo */}
                     <div className="max-w-2xl mx-auto mb-16">
                         <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-6 border border-white/20">
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="p-2 bg-sage-500/30 rounded-lg">
-                                    <MessageSquare className="w-5 h-5 text-sage-200" />
+                            {/* Chat Demo */}
+                            <div className="space-y-4">
+                                {/* User message */}
+                                <div className="flex justify-end">
+                                    <div className="bg-sage-500 text-white rounded-2xl rounded-tr-sm px-4 py-2 max-w-[80%]">
+                                        <p className="text-sm">I spent $47.50 at Whole Foods for groceries</p>
+                                    </div>
                                 </div>
-                                <span className="text-sage-200 font-medium">Natural Language Input</span>
-                            </div>
-                            <div className="bg-sage-900/50 rounded-xl p-4 font-mono text-sm">
-                                <p className="text-sage-400 mb-2">Try typing naturally...</p>
-                                <p className="text-white">&quot;Spent $47.50 at Whole Foods for groceries&quot;</p>
+                                {/* Bud response */}
+                                <div className="flex gap-3">
+                                    <div className="w-8 h-8 rounded-full bg-cream-100 flex items-center justify-center text-lg flex-shrink-0">
+                                        🧑‍🌾
+                                    </div>
+                                    <div className="bg-white/20 backdrop-blur rounded-2xl rounded-tl-sm px-4 py-2">
+                                        <p className="text-sm text-white">Done! 🌿 I&apos;ve planted that $47.50 grocery expense in your Budget garden. Your new balance is $952.50!</p>
+                                    </div>
+                                </div>
                             </div>
                             <div className="mt-4 flex items-center gap-2 text-sage-300 text-sm">
                                 <Zap className="w-4 h-4 text-cream-400" />
-                                <span>AI creates the transaction instantly</span>
+                                <span>Transaction added instantly • Dashboard updated</span>
                             </div>
                         </div>
                     </div>
 
-                    {/* AI Features Grid */}
+                    {/* What Bud Can Do */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div className="bg-white/5 backdrop-blur rounded-2xl p-6 border border-white/10 group hover:bg-white/10 transition-all">
                             <div className="p-3 bg-sage-500/20 rounded-xl w-fit mb-4">
                                 <MessageSquare className="w-6 h-6 text-sage-300" />
                             </div>
-                            <h3 className="text-lg font-semibold text-white mb-2">Talk to Your Money</h3>
+                            <h3 className="text-lg font-semibold text-white mb-2">Add Transactions</h3>
                             <p className="text-sage-400 text-sm">
-                                &quot;How much did I spend on coffee this month?&quot; Get instant answers about your finances.
+                                &quot;I spent $50 at Target&quot; — Bud adds expenses and income just by chatting naturally.
                             </p>
                         </div>
 
@@ -293,9 +301,9 @@ export default async function HomePage() {
                             <div className="p-3 bg-cream-500/20 rounded-xl w-fit mb-4">
                                 <Brain className="w-6 h-6 text-cream-300" />
                             </div>
-                            <h3 className="text-lg font-semibold text-white mb-2">Smart Insights</h3>
+                            <h3 className="text-lg font-semibold text-white mb-2">Manage Accounts</h3>
                             <p className="text-sage-400 text-sm">
-                                AI analyzes your patterns and gives personalized tips to help you save more.
+                                &quot;Create a vacation savings account&quot; — Bud sets up new accounts and transfers money.
                             </p>
                         </div>
 
@@ -303,9 +311,9 @@ export default async function HomePage() {
                             <div className="p-3 bg-sage-500/20 rounded-xl w-fit mb-4">
                                 <TrendingUp className="w-6 h-6 text-sage-300" />
                             </div>
-                            <h3 className="text-lg font-semibold text-white mb-2">Spending Forecasts</h3>
+                            <h3 className="text-lg font-semibold text-white mb-2">Get Insights</h3>
                             <p className="text-sage-400 text-sm">
-                                AI predicts your end-of-month balance and warns you before you overspend.
+                                &quot;How much did I spend this week?&quot; — Ask questions and get instant answers about your finances.
                             </p>
                         </div>
                     </div>
