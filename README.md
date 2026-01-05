@@ -155,7 +155,7 @@ src/
     └── schema.prisma     # Database schema
 ```
 
-## Made with ❤️
+## Author
 
 Built by [Brennon](https://brennonstuart.com)
 

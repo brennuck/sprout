@@ -358,7 +358,7 @@ export default async function HomePage() {
                             <span className="text-sage-600 text-sm font-medium">Sprout</span>
                         </div>
                         <p className="text-sage-500 text-sm">
-                            Made with ❤️ by{" "}
+                            Built by{" "}
                             <a
                                 href="https://bnuckols.com"
                                 target="_blank"
