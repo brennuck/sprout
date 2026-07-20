@@ -8,54 +8,57 @@ datasource db {
 }
 
 model User {
-  id             String    @id @default(cuid())
-  email          String    @unique
+  id             String   @id @default(cuid())
+  email          String   @unique
   hashedPassword String
   name           String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  
-  sessions       Session[]
-  accounts       Account[]
-  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  sessions        Session[]
+  accounts        Account[]
+  envelopes       Envelope[]
+  allocationPlans AllocationPlan[]
+  goalPreference  GoalPreference?
+
   // Sharing relationships
-  sharedWithMe   DashboardShare[] @relation("SharedWith")
-  sharedByMe     DashboardShare[] @relation("SharedBy")
-  sentInvites    Invitation[]     @relation("InviteSender")
-  receivedInvites Invitation[]    @relation("InviteRecipient")
+  sharedWithMe    DashboardShare[] @relation("SharedWith")
+  sharedByMe      DashboardShare[] @relation("SharedBy")
+  sentInvites     Invitation[]     @relation("InviteSender")
+  receivedInvites Invitation[]     @relation("InviteRecipient")
 
   @@map("users")
 }
 
 model DashboardShare {
-  id          String         @id @default(cuid())
-  permission  SharePermission @default(VIEW)
-  createdAt   DateTime       @default(now())
-  
-  ownerId     String
-  owner       User           @relation("SharedBy", fields: [ownerId], references: [id], onDelete: Cascade)
-  
-  viewerId    String
-  viewer      User           @relation("SharedWith", fields: [viewerId], references: [id], onDelete: Cascade)
+  id         String          @id @default(cuid())
+  permission SharePermission @default(VIEW)
+  createdAt  DateTime        @default(now())
+
+  ownerId String
+  owner   User   @relation("SharedBy", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  viewerId String
+  viewer   User   @relation("SharedWith", fields: [viewerId], references: [id], onDelete: Cascade)
 
   @@unique([ownerId, viewerId])
   @@map("dashboard_shares")
 }
 
 model Invitation {
-  id          String           @id @default(cuid())
-  email       String
-  permission  SharePermission  @default(VIEW)
-  status      InvitationStatus @default(PENDING)
-  createdAt   DateTime         @default(now())
-  expiresAt   DateTime
-  
-  senderId    String
-  sender      User             @relation("InviteSender", fields: [senderId], references: [id], onDelete: Cascade)
-  
+  id         String           @id @default(cuid())
+  email      String
+  permission SharePermission  @default(VIEW)
+  status     InvitationStatus @default(PENDING)
+  createdAt  DateTime         @default(now())
+  expiresAt  DateTime
+
+  senderId String
+  sender   User   @relation("InviteSender", fields: [senderId], references: [id], onDelete: Cascade)
+
   // If the invited email matches an existing user
   recipientId String?
-  recipient   User?            @relation("InviteRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  recipient   User?   @relation("InviteRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
 
   @@map("invitations")
 }
@@ -76,8 +79,8 @@ model Session {
   id        String   @id
   userId    String
   expiresAt DateTime
-  
-  user      User     @relation(references: [id], fields: [userId], onDelete: Cascade)
+
+  user User @relation(references: [id], fields: [userId], onDelete: Cascade)
 
   @@map("sessions")
 }
@@ -89,12 +92,14 @@ model Account {
   balance   Decimal     @default(0) @db.Decimal(12, 2)
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
-  
-  userId    String
-  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  transactions    Transaction[] @relation("AccountTransactions")
-  transfersTo     Transaction[] @relation("TransferToAccount")
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  transactions    Transaction[]    @relation("AccountTransactions")
+  transfersTo     Transaction[]    @relation("TransferToAccount")
+  envelopes       Envelope[]
+  allocationPlans AllocationPlan[]
 
   @@map("accounts")
 }
@@ -114,15 +119,19 @@ model Transaction {
   date        DateTime
   type        TransactionType
   createdAt   DateTime        @default(now())
-  
-  // Primary account (source for transfers/expenses, destination for income)
-  accountId   String
-  account     Account         @relation("AccountTransactions", fields: [accountId], references: [id], onDelete: Cascade)
-  
-  // For transfers: the destination account
-  transferToAccountId String?
-  transferToAccount   Account? @relation("TransferToAccount", fields: [transferToAccountId], references: [id], onDelete: SetNull)
 
+  // Primary account (source for transfers/expenses, destination for income)
+  accountId String
+  account   Account @relation("AccountTransactions", fields: [accountId], references: [id], onDelete: Cascade)
+
+  // For transfers: the destination account
+  transferToAccountId  String?
+  transferToAccount    Account?        @relation("TransferToAccount", fields: [transferToAccountId], references: [id], onDelete: SetNull)
+  envelopeEntries      EnvelopeEntry[]
+  goalImpactEnvelopeId String?
+  goalImpactEnvelope   Envelope?       @relation("GoalImpactTransactions", fields: [goalImpactEnvelopeId], references: [id], onDelete: SetNull)
+
+  @@index([goalImpactEnvelopeId])
   @@map("transactions")
 }
 
@@ -130,4 +139,124 @@ enum TransactionType {
   INCOME
   EXPENSE
   TRANSFER
+}
+
+model Envelope {
+  id            String       @id @default(cuid())
+  name          String
+  kind          EnvelopeKind @default(BUDGET)
+  targetAmount  Decimal?     @db.Decimal(12, 2)
+  monthlyTarget Decimal?     @db.Decimal(12, 2)
+  targetDate    DateTime?
+  rollover      Boolean      @default(true)
+  sortOrder     Int          @default(0)
+  archivedAt    DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  entries                EnvelopeEntry[]
+  allocationRules        AllocationRule[]
+  focusPreferences       GoalPreference[]
+  goalImpactTransactions Transaction[]    @relation("GoalImpactTransactions")
+
+  @@index([userId, archivedAt, sortOrder])
+  @@index([accountId])
+  @@map("envelopes")
+}
+
+enum EnvelopeKind {
+  BUDGET
+  GOAL
+}
+
+model EnvelopeEntry {
+  id        String            @id @default(cuid())
+  amount    Decimal           @db.Decimal(12, 2)
+  type      EnvelopeEntryType
+  note      String?
+  groupId   String?
+  date      DateTime          @default(now())
+  createdAt DateTime          @default(now())
+
+  envelopeId String
+  envelope   Envelope @relation(fields: [envelopeId], references: [id], onDelete: Cascade)
+
+  transactionId String?
+  transaction   Transaction? @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@index([envelopeId, date])
+  @@index([transactionId])
+  @@index([groupId])
+  @@map("envelope_entries")
+}
+
+enum EnvelopeEntryType {
+  ALLOCATION
+  SPEND
+  MOVE
+  ADJUSTMENT
+  WITHDRAWAL
+}
+
+model AllocationPlan {
+  id        String   @id @default(cuid())
+  name      String   @default("Paycheck plan")
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  accountId String
+  account   Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  rules AllocationRule[]
+
+  @@unique([userId, accountId])
+  @@map("allocation_plans")
+}
+
+model AllocationRule {
+  id        String               @id @default(cuid())
+  method    AllocationRuleMethod
+  value     Decimal              @default(0) @db.Decimal(12, 2)
+  priority  Int                  @default(0)
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+
+  planId String
+  plan   AllocationPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  envelopeId String
+  envelope   Envelope @relation(fields: [envelopeId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, envelopeId])
+  @@index([planId, priority])
+  @@map("allocation_rules")
+}
+
+enum AllocationRuleMethod {
+  FIXED
+  PERCENT
+  REMAINDER
+}
+
+model GoalPreference {
+  userId String @id
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  goalEnvelopeId String
+  goalEnvelope   Envelope @relation(fields: [goalEnvelopeId], references: [id], onDelete: Cascade)
+
+  updatedAt DateTime @updatedAt
+
+  @@index([goalEnvelopeId])
+  @@map("goal_preferences")
 }

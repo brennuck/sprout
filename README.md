@@ -6,8 +6,11 @@ A beautiful budgeting app that helps you grow your finances. Built with Next.js 
 
 - 🤖 **AI-Powered Assistant** - Meet Bud, your personal gardener! Chat naturally to add transactions, create accounts, transfer funds, and more
 - 🔐 **Secure Authentication** - Sign up and sign in with Lucia session-based auth
-- 💰 **Multiple Accounts** - Track savings, budgets, allowances, retirement, and stock accounts
-- 📊 **Transaction Tracking** - Record income and expenses with automatic balance updates
+- 💰 **Envelope Budgets** - Organize real account balances into virtual monthly budgets and goals
+- 💵 **Income Plans** - Automatically distribute recorded income with fixed, percentage, and remainder rules
+- 🎯 **Goal Motivation** - See actual goal progress and the hypothetical opportunity cost of spending
+- 📊 **Reports** - Explore cash flow, spending, allocation, net worth, and goal-impact charts
+- 📱 **iPhone-First PWA** - Installable shell with safe-area navigation and touch-friendly workflows
 - 🔄 **Easy Transfers** - Move money between accounts with one click
 - 👥 **Dashboard Sharing** - Invite family or partners to view and collaborate on your finances
 - ⚡ **Quick Actions** - Add transactions, transfers, and accounts from a convenient modal interface
@@ -57,11 +60,11 @@ NEXT_PUBLIC_APP_URL="http://localhost:3000"
 OPENAI_API_KEY="sk-..."
 ```
 
-3. Generate Prisma client and push the schema to your database:
+3. Generate Prisma client and apply checked-in migrations:
 
 ```bash
 npm run db:generate
-npm run db:push
+npx prisma migrate deploy
 ```
 
 4. Start the development server:
@@ -77,7 +80,7 @@ npm run dev
 ### User
 - `id`: Unique identifier
 - `email`: User email (unique)
-- `hashedPassword`: Argon2 hashed password
+- `hashedPassword`: bcrypt hashed password
 - `name`: Optional display name
 
 ### Account
@@ -95,6 +98,24 @@ npm run dev
 - `type`: INCOME | EXPENSE | TRANSFER
 - `accountId`: Associated account
 - `transferToAccountId`: Destination account (for transfers)
+- `goalImpactEnvelopeId`: Optional goal used only for hypothetical opportunity-cost reporting
+
+### Envelope
+- Linked to one real `Account`
+- `kind`: BUDGET | GOAL
+- Optional target amount, monthly target, and target date
+- Available balance is the sum of signed `EnvelopeEntry` ledger rows
+
+### AllocationPlan
+- One optional plan per real account
+- Ordered FIXED, PERCENT, and REMAINDER rules
+- Runs atomically when income is recorded
+
+### Money invariants
+- Account balances represent real cash.
+- Envelope entries represent virtual assignments and must not create bank transfers.
+- Goal-impact spending is hypothetical and never changes funded goal progress.
+- Transaction, account, and envelope balance changes commit in one database transaction.
 
 ### DashboardShare
 - `id`: Unique identifier
@@ -116,6 +137,10 @@ npm run dev
 - `npm run dev` - Start development server
 - `npm run build` - Build for production
 - `npm run start` - Start production server
+- `npm run typecheck` - Check TypeScript without emitting files
+- `npm test` - Run unit tests
+- `npm run test:integration` - Run atomic ledger and shared-permission tests against `TEST_DATABASE_URL`
+- `npm run test:e2e` - Run Playwright desktop and iPhone tests
 - `npm run db:generate` - Generate Prisma client
 - `npm run db:push` - Push schema to database
 - `npm run db:migrate` - Run migrations
@@ -127,11 +152,14 @@ npm run dev
 src/
 ├── app/
 │   ├── (auth)/           # Auth pages (signin, signup)
-│   ├── (dashboard)/      # Protected dashboard pages
+│   ├── (dashboard)/      # Home, budgets, income, reports, activity, settings
 │   ├── api/              # API routes
 │   │   ├── auth/         # Auth endpoints
 │   │   ├── accounts/     # Account CRUD
-│   │   ├── transactions/ # Transaction CRUD
+│   │   ├── transactions/ # Atomic transaction CRUD
+│   │   ├── envelopes/    # Budget and goal envelopes
+│   │   ├── allocation-plans/ # Income distribution plans
+│   │   ├── reports/      # Read-only reporting aggregates
 │   │   ├── transfers/    # Transfer operations
 │   │   ├── invitations/  # Sharing invitations
 │   │   ├── shares/       # Dashboard shares
@@ -149,11 +177,31 @@ src/
 ├── lib/
 │   ├── auth.ts           # Lucia auth configuration
 │   ├── password.ts       # Password hashing utilities
+│   ├── authorization.ts  # Owner and shared-dashboard permissions
+│   ├── services/         # Ledger, allocation, and reporting logic
 │   ├── prisma.ts         # Prisma client
 │   └── utils.ts          # Utility functions
 └── prisma/
-    └── schema.prisma     # Database schema
+    ├── schema.prisma     # Database schema
+    └── migrations/       # Versioned production migrations
 ```
+
+## Testing and migration safety
+
+Run the local verification suite before release:
+
+```bash
+npm run typecheck
+npm test
+TEST_DATABASE_URL="postgresql://..." npm run test:integration
+npm run lint
+npm run build
+npm run test:e2e
+```
+
+The authenticated Playwright journey requires a disposable migrated database and `E2E_FULL=1`. The default browser suite covers the public PWA shell, mobile viewport, accessibility scan, and protected-route behavior without changing financial data.
+
+Existing `BUDGET` and `ALLOWANCE` accounts are preserved. Users can explicitly convert them in Settings by selecting a destination cash account; conversion moves the current cash balance and creates a matching envelope atomically.
 
 ## Author
 

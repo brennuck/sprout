@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Wallet, Users, ChevronDown, Eye } from "lucide-react";
 import { AccountsOverview } from "./AccountsOverview";
@@ -26,7 +26,10 @@ export function DashboardContent({ accounts, transactions, sharedDashboards = []
 
   // Get current dashboard data
   const currentShared = sharedDashboards.find(s => s.id === viewingDashboard);
-  const currentAccounts = viewingDashboard === "mine" ? accounts : (currentShared?.accounts || []);
+  const currentAccounts = useMemo(
+    () => (viewingDashboard === "mine" ? accounts : (currentShared?.accounts || [])),
+    [viewingDashboard, accounts, currentShared],
+  );
   const currentTransactions = viewingDashboard === "mine" ? transactions : (currentShared?.transactions || []);
   const isViewingShared = viewingDashboard !== "mine";
   const canEdit = !isViewingShared || currentShared?.permission === "EDIT";

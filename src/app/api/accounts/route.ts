@@ -2,6 +2,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { validateRequest } from "@/lib/auth";
+import { errorResponse } from "@/lib/errors";
+import {
+    convertLegacyAccount,
+    createLedgerAccount,
+    deleteLedgerAccount,
+} from "@/lib/services/ledger";
 
 const createAccountSchema = z.object({
     name: z.string().min(1, "Account name is required"),
@@ -9,6 +15,14 @@ const createAccountSchema = z.object({
     startingBalance: z.number().optional().default(0),
     fundFromAccountId: z.string().optional(),
     fundAmount: z.number().optional(),
+});
+
+const convertAccountSchema = z.object({
+    action: z.literal("CONVERT_LEGACY"),
+    sourceAccountId: z.string(),
+    destinationAccountId: z.string(),
+    envelopeName: z.string().trim().min(1).max(80),
+    kind: z.enum(["BUDGET", "GOAL"]),
 });
 
 export async function GET() {
@@ -48,67 +62,38 @@ export async function POST(request: Request) {
 
         const { name, type, startingBalance, fundFromAccountId, fundAmount } = result.data;
 
-        // If funding from another account, verify it exists and has enough balance
-        if (fundFromAccountId && fundAmount && fundAmount > 0) {
-            const sourceAccount = await prisma.account.findFirst({
-                where: { id: fundFromAccountId, userId: user.id },
-            });
-
-            if (!sourceAccount) {
-                return NextResponse.json({ error: "Source account not found" }, { status: 404 });
-            }
-
-            if (Number(sourceAccount.balance) < fundAmount) {
-                return NextResponse.json({ error: "Insufficient funds in source account" }, { status: 400 });
-            }
-        }
-
-        // Create account and optionally transfer funds atomically
-        const account = await prisma.$transaction(async (tx) => {
-            // Create the new account with starting balance
-            const totalBalance = startingBalance + (fundAmount || 0);
-
-            const newAccount = await tx.account.create({
-                data: {
-                    name,
-                    type,
-                    balance: totalBalance,
-                    userId: user.id,
-                },
-            });
-
-            // If funding from another account, deduct and create transfer record
-            if (fundFromAccountId && fundAmount && fundAmount > 0) {
-                // Deduct from source account
-                await tx.account.update({
-                    where: { id: fundFromAccountId },
-                    data: {
-                        balance: {
-                            decrement: fundAmount,
-                        },
-                    },
-                });
-
-                // Create transfer transaction for audit trail
-                await tx.transaction.create({
-                    data: {
-                        amount: fundAmount,
-                        description: `Initial funding for ${name}`,
-                        date: new Date(),
-                        type: "TRANSFER",
-                        accountId: fundFromAccountId,
-                        transferToAccountId: newAccount.id,
-                    },
-                });
-            }
-
-            return newAccount;
+        const account = await createLedgerAccount({
+            actorId: user.id,
+            name,
+            type,
+            startingBalance,
+            fundFromAccountId,
+            fundAmount,
         });
 
         return NextResponse.json(account);
     } catch (error) {
-        console.error("Create account error:", error);
-        return NextResponse.json({ error: "Failed to create account" }, { status: 500 });
+        const response = errorResponse(error);
+        return NextResponse.json(response.body, { status: response.status });
+    }
+}
+
+export async function PATCH(request: Request) {
+    try {
+        const { user } = await validateRequest();
+        if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        const input = convertAccountSchema.parse(await request.json());
+        const envelope = await convertLegacyAccount(
+            user.id,
+            input.sourceAccountId,
+            input.destinationAccountId,
+            input.envelopeName,
+            input.kind,
+        );
+        return NextResponse.json(envelope);
+    } catch (error) {
+        const response = errorResponse(error);
+        return NextResponse.json(response.body, { status: response.status });
     }
 }
 
@@ -127,23 +112,11 @@ export async function DELETE(request: Request) {
             return NextResponse.json({ error: "Account ID is required" }, { status: 400 });
         }
 
-        // Verify the account belongs to the user
-        const account = await prisma.account.findFirst({
-            where: { id: accountId, userId: user.id },
-        });
-
-        if (!account) {
-            return NextResponse.json({ error: "Account not found" }, { status: 404 });
-        }
-
-        // Delete the account (transactions will be cascade deleted via Prisma schema)
-        await prisma.account.delete({
-            where: { id: accountId },
-        });
+        await deleteLedgerAccount(user.id, accountId);
 
         return NextResponse.json({ success: true });
     } catch (error) {
-        console.error("Delete account error:", error);
-        return NextResponse.json({ error: "Failed to delete account" }, { status: 500 });
+        const response = errorResponse(error);
+        return NextResponse.json(response.body, { status: response.status });
     }
 }

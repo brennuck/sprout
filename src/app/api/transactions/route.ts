@@ -2,6 +2,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { validateRequest } from "@/lib/auth";
+import { errorResponse } from "@/lib/errors";
+import {
+  createLedgerTransaction,
+  deleteLedgerTransaction,
+  updateLedgerTransaction,
+} from "@/lib/services/ledger";
 
 const createTransactionSchema = z.object({
   amount: z.number().positive("Amount must be positive"),
@@ -9,7 +15,13 @@ const createTransactionSchema = z.object({
   type: z.enum(["INCOME", "EXPENSE"]),
   accountId: z.string(),
   date: z.string().optional(),
+  envelopeId: z.string().nullable().optional(),
+  goalImpactEnvelopeId: z.string().nullable().optional(),
 });
+
+const updateTransactionSchema = createTransactionSchema
+  .omit({ accountId: true, type: true })
+  .extend({ id: z.string() });
 
 export async function GET() {
   try {
@@ -59,51 +71,23 @@ export async function POST(request: Request) {
       );
     }
 
-    const { amount, description, type, accountId, date } = result.data;
-
-    // Verify account belongs to user
-    const account = await prisma.account.findFirst({
-      where: { id: accountId, userId: user.id },
-    });
-
-    if (!account) {
-      return NextResponse.json({ error: "Account not found" }, { status: 404 });
-    }
-
-    // Calculate the balance change (negative for expenses)
-    const balanceChange = type === "EXPENSE" ? -amount : amount;
-
-    // Create transaction and update balance atomically
-    const transaction = await prisma.$transaction(async (tx) => {
-      const newTransaction = await tx.transaction.create({
-        data: {
-          amount,
-          description,
-          date: date ? new Date(date) : new Date(),
-          type,
-          accountId,
-        },
-      });
-
-      await tx.account.update({
-        where: { id: accountId },
-        data: {
-          balance: {
-            increment: balanceChange,
-          },
-        },
-      });
-
-      return newTransaction;
+    const { amount, description, type, accountId, date, envelopeId, goalImpactEnvelopeId } =
+      result.data;
+    const transaction = await createLedgerTransaction({
+      actorId: user.id,
+      amount,
+      description,
+      type,
+      accountId,
+      date: date ? new Date(`${date}T12:00:00`) : undefined,
+      envelopeId,
+      goalImpactEnvelopeId,
     });
 
     return NextResponse.json(transaction);
   } catch (error) {
-    console.error("Create transaction error:", error);
-    return NextResponse.json(
-      { error: "Failed to create transaction" },
-      { status: 500 }
-    );
+    const response = errorResponse(error);
+    return NextResponse.json(response.body, { status: response.status });
   }
 }
 
@@ -122,44 +106,32 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "Transaction ID required" }, { status: 400 });
     }
 
-    // Get transaction and verify ownership
-    const transaction = await prisma.transaction.findFirst({
-      where: {
-        id: transactionId,
-        account: { userId: user.id },
-      },
-    });
-
-    if (!transaction) {
-      return NextResponse.json({ error: "Transaction not found" }, { status: 404 });
-    }
-
-    // Reverse the balance change and delete
-    const balanceChange = transaction.type === "EXPENSE" 
-      ? Number(transaction.amount) 
-      : -Number(transaction.amount);
-
-    await prisma.$transaction(async (tx) => {
-      await tx.account.update({
-        where: { id: transaction.accountId! },
-        data: {
-          balance: {
-            increment: balanceChange,
-          },
-        },
-      });
-
-      await tx.transaction.delete({
-        where: { id: transactionId },
-      });
-    });
+    await deleteLedgerTransaction(user.id, transactionId);
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Delete transaction error:", error);
-    return NextResponse.json(
-      { error: "Failed to delete transaction" },
-      { status: 500 }
-    );
+    const response = errorResponse(error);
+    return NextResponse.json(response.body, { status: response.status });
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const { user } = await validateRequest();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const input = updateTransactionSchema.parse(await request.json());
+    const transaction = await updateLedgerTransaction({
+      actorId: user.id,
+      transactionId: input.id,
+      amount: input.amount,
+      description: input.description,
+      date: input.date ? new Date(`${input.date}T12:00:00`) : new Date(),
+      envelopeId: input.envelopeId,
+      goalImpactEnvelopeId: input.goalImpactEnvelopeId,
+    });
+    return NextResponse.json(transaction);
+  } catch (error) {
+    const response = errorResponse(error);
+    return NextResponse.json(response.body, { status: response.status });
   }
 }

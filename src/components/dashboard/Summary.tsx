@@ -1,6 +1,6 @@
 "use client";
 
-import { DollarSign, TrendingDown, TrendingUp, ArrowRightLeft } from "lucide-react";
+import { DollarSign, TrendingDown, TrendingUp } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { formatCurrency } from "@/lib/utils";
 import type { TransactionData } from "@/app/(dashboard)/dashboard/page";

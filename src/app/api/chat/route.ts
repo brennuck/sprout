@@ -2,6 +2,13 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { validateRequest } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import {
+  createLedgerTransaction,
+  createLedgerTransfer,
+  deleteLedgerTransaction,
+  createLedgerAccount,
+  deleteLedgerAccount,
+} from "@/lib/services/ledger";
 import OpenAI from "openai";
 
 const openai = new OpenAI({
@@ -162,56 +169,30 @@ async function executeFunction(
   try {
     switch (name) {
       case "add_transaction": {
-        // Verify account belongs to user
-        const account = await prisma.account.findFirst({
-          where: { id: args.accountId as string, userId },
-        });
-        if (!account) {
-          return { success: false, message: "Account not found" };
-        }
-
         const amount = args.amount as number;
         const type = args.type as "EXPENSE" | "INCOME";
-
-        // Create transaction and update balance
-        const transaction = await prisma.$transaction(async (tx) => {
-          const newTx = await tx.transaction.create({
-            data: {
-              amount,
-              description: args.description as string,
-              type,
-              date: args.date ? new Date(args.date as string) : new Date(),
-              accountId: args.accountId as string,
-            },
-          });
-
-          await tx.account.update({
-            where: { id: args.accountId as string },
-            data: {
-              balance: {
-                [type === "INCOME" ? "increment" : "decrement"]: amount,
-              },
-            },
-          });
-
-          return newTx;
+        const result = await createLedgerTransaction({
+          actorId: userId,
+          accountId: args.accountId as string,
+          amount,
+          description: args.description as string,
+          type,
+          date: args.date ? new Date(args.date as string) : undefined,
         });
 
         return {
           success: true,
           message: `Added ${type.toLowerCase()} of $${amount.toFixed(2)} for "${args.description}"`,
-          data: transaction,
+          data: result,
         };
       }
 
       case "create_account": {
-        const newAccount = await prisma.account.create({
-          data: {
-            name: args.name as string,
-            type: args.type as "SAVINGS" | "BUDGET" | "ALLOWANCE" | "RETIREMENT" | "STOCK",
-            balance: (args.startingBalance as number) || 0,
-            userId,
-          },
+        const newAccount = await createLedgerAccount({
+          actorId: userId,
+          name: args.name as string,
+          type: args.type as "SAVINGS" | "BUDGET" | "ALLOWANCE" | "RETIREMENT" | "STOCK",
+          startingBalance: (args.startingBalance as number) || 0,
         });
 
         return {
@@ -222,73 +203,33 @@ async function executeFunction(
       }
 
       case "transfer_money": {
-        const fromAccount = await prisma.account.findFirst({
-          where: { id: args.fromAccountId as string, userId },
-        });
-        const toAccount = await prisma.account.findFirst({
-          where: { id: args.toAccountId as string, userId },
-        });
-
-        if (!fromAccount || !toAccount) {
-          return { success: false, message: "One or both accounts not found" };
-        }
-
-        const amount = args.amount as number;
-        if (Number(fromAccount.balance) < amount) {
-          return { success: false, message: `Not enough funds in ${fromAccount.name}. Available: $${Number(fromAccount.balance).toFixed(2)}` };
-        }
-
-        await prisma.$transaction([
-          prisma.transaction.create({
-            data: {
-              amount,
-              description: (args.description as string) || `Transfer to ${toAccount.name}`,
-              type: "TRANSFER",
-              date: new Date(),
-              accountId: args.fromAccountId as string,
-              transferToAccountId: args.toAccountId as string,
-            },
-          }),
-          prisma.account.update({
-            where: { id: args.fromAccountId as string },
-            data: { balance: { decrement: amount } },
-          }),
-          prisma.account.update({
-            where: { id: args.toAccountId as string },
-            data: { balance: { increment: amount } },
-          }),
+        const [fromAccount, toAccount] = await Promise.all([
+          prisma.account.findUnique({ where: { id: args.fromAccountId as string } }),
+          prisma.account.findUnique({ where: { id: args.toAccountId as string } }),
         ]);
+        const amount = args.amount as number;
+        await createLedgerTransfer({
+          actorId: userId,
+          fromAccountId: args.fromAccountId as string,
+          toAccountId: args.toAccountId as string,
+          amount,
+          description: (args.description as string) || undefined,
+        });
 
         return {
           success: true,
-          message: `Transferred $${amount.toFixed(2)} from ${fromAccount.name} to ${toAccount.name}`,
+          message: `Transferred $${amount.toFixed(2)} from ${fromAccount?.name || "source"} to ${toAccount?.name || "destination"}`,
         };
       }
 
       case "delete_transaction": {
-        const transaction = await prisma.transaction.findFirst({
+        const transaction = await prisma.transaction.findUnique({
           where: { id: args.transactionId as string },
-          include: { account: true },
         });
-
-        if (!transaction || transaction.account.userId !== userId) {
+        if (!transaction) {
           return { success: false, message: "Transaction not found" };
         }
-
-        // Reverse the balance change
-        const balanceChange = transaction.type === "INCOME" 
-          ? { decrement: Number(transaction.amount) }
-          : transaction.type === "EXPENSE"
-          ? { increment: Number(transaction.amount) }
-          : {};
-
-        await prisma.$transaction([
-          prisma.transaction.delete({ where: { id: args.transactionId as string } }),
-          prisma.account.update({
-            where: { id: transaction.accountId },
-            data: { balance: balanceChange },
-          }),
-        ]);
+        await deleteLedgerTransaction(userId, args.transactionId as string);
 
         return {
           success: true,
@@ -297,15 +238,13 @@ async function executeFunction(
       }
 
       case "delete_account": {
-        const account = await prisma.account.findFirst({
-          where: { id: args.accountId as string, userId },
-        });
+        const account = await prisma.account.findUnique({ where: { id: args.accountId as string } });
 
         if (!account) {
           return { success: false, message: "Account not found" };
         }
 
-        await prisma.account.delete({ where: { id: args.accountId as string } });
+        await deleteLedgerAccount(userId, args.accountId as string);
 
         return {
           success: true,

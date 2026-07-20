@@ -12,7 +12,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant = "primary", size = "md", isLoading, children, disabled, ...props }, ref) => {
-    const baseStyles = "inline-flex items-center justify-center font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl";
+    const baseStyles = "inline-flex min-h-11 items-center justify-center rounded-xl font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50";
     
     const variants = {
       primary: "bg-sage-600 text-white hover:bg-sage-700 focus:ring-sage-500 shadow-lg shadow-sage-600/25 hover:shadow-sage-600/40 hover:-translate-y-0.5",
@@ -33,6 +33,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         className={cn(baseStyles, variants[variant], sizes[size], className)}
         disabled={disabled || isLoading}
+        aria-busy={isLoading || undefined}
         {...props}
       >
         {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}

@@ -9,6 +9,27 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        background: 'hsl(var(--surface-base) / <alpha-value>)',
+        foreground: 'hsl(var(--text-primary) / <alpha-value>)',
+        surface: {
+          DEFAULT: 'hsl(var(--surface-raised) / <alpha-value>)',
+          muted: 'hsl(var(--surface-muted) / <alpha-value>)',
+        },
+        ink: {
+          DEFAULT: 'hsl(var(--text-primary) / <alpha-value>)',
+          secondary: 'hsl(var(--text-secondary) / <alpha-value>)',
+          muted: 'hsl(var(--text-muted) / <alpha-value>)',
+        },
+        brand: {
+          DEFAULT: 'hsl(var(--brand) / <alpha-value>)',
+          strong: 'hsl(var(--brand-strong) / <alpha-value>)',
+          soft: 'hsl(var(--brand-soft) / <alpha-value>)',
+        },
+        positive: 'hsl(var(--positive) / <alpha-value>)',
+        warning: 'hsl(var(--warning) / <alpha-value>)',
+        danger: 'hsl(var(--danger) / <alpha-value>)',
+        focus: 'hsl(var(--focus) / <alpha-value>)',
+        line: 'hsl(var(--border-subtle) / <alpha-value>)',
         // Earthy green palette
         sage: {
           50: '#f6f7f4',
@@ -16,7 +37,7 @@ const config: Config = {
           200: '#c9d1be',
           300: '#a7b496',
           400: '#879875',
-          500: '#6a7d58',
+          500: '#5f714f',
           600: '#536345',
           700: '#424e38',
           800: '#374030',

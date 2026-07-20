@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -14,20 +14,46 @@ interface ModalProps {
 
 export function Modal({ isOpen, onClose, title, children, className }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
 
   useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
+      if (e.key === "Tab" && dialogRef.current) {
+        const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+        );
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     };
 
     if (isOpen) {
       document.addEventListener("keydown", handleEscape);
       document.body.style.overflow = "hidden";
+      requestAnimationFrame(() => {
+        const autofocus = dialogRef.current?.querySelector<HTMLElement>("[autofocus]");
+        const firstControl = dialogRef.current?.querySelector<HTMLElement>(
+          "input, select, textarea, button",
+        );
+        (autofocus || firstControl || dialogRef.current)?.focus();
+      });
     }
 
     return () => {
       document.removeEventListener("keydown", handleEscape);
       document.body.style.overflow = "unset";
+      previouslyFocused?.focus();
     };
   }, [isOpen, onClose]);
 
@@ -36,7 +62,7 @@ export function Modal({ isOpen, onClose, title, children, className }: ModalProp
   return (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4"
       onClick={(e) => {
         if (e.target === overlayRef.current) onClose();
       }}
@@ -46,24 +72,31 @@ export function Modal({ isOpen, onClose, title, children, className }: ModalProp
       
       {/* Modal */}
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
         className={cn(
-          "relative w-full max-w-md bg-white rounded-2xl shadow-2xl animate-in",
+          "relative flex max-h-[calc(100dvh-env(safe-area-inset-top))] w-full max-w-md flex-col rounded-t-2xl bg-surface shadow-2xl animate-in sm:max-h-[calc(100dvh-2rem)] sm:rounded-2xl",
           className
         )}
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-sage-100">
-          <h2 className="text-lg font-semibold text-sage-900">{title}</h2>
+          <h2 id={titleId} className="text-lg font-semibold text-ink">{title}</h2>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1.5 text-sage-400 hover:text-sage-600 hover:bg-sage-100 rounded-lg transition-colors"
+            aria-label="Close dialog"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink focus-visible:ring-2 focus-visible:ring-focus"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
         
         {/* Content */}
-        <div className="p-4">
+        <div className="overflow-y-auto p-4 pb-safe">
           {children}
         </div>
       </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, type InputHTMLAttributes } from "react";
+import { forwardRef, useId, type InputHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
@@ -11,7 +11,9 @@ export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
 
 const Input = forwardRef<HTMLInputElement, InputProps>(
   ({ className, label, error, hint, id, ...props }, ref) => {
-    const inputId = id || label?.toLowerCase().replace(/\s+/g, "-");
+    const generatedId = useId();
+    const inputId = id || generatedId;
+    const descriptionId = `${inputId}-description`;
     
     return (
       <div className="space-y-1.5">
@@ -24,17 +26,19 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
           id={inputId}
           ref={ref}
           className={cn(
-            "block w-full px-4 py-2.5 bg-white/80 border border-sage-200 rounded-xl text-sage-900 placeholder:text-sage-400",
-            "focus:outline-none focus:ring-2 focus:ring-sage-400/50 focus:border-sage-400",
+            "block min-h-11 w-full rounded-xl border border-line bg-surface/80 px-4 py-2.5 text-ink placeholder:text-ink-muted",
+            "focus:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:border-focus",
             "transition-all duration-200",
             "disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-sage-50",
             error && "border-red-400 focus:ring-red-400/50 focus:border-red-400",
             className
           )}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error || hint ? descriptionId : undefined}
           {...props}
         />
-        {error && <p className="text-sm text-red-500">{error}</p>}
-        {hint && !error && <p className="text-sm text-sage-500">{hint}</p>}
+        {error && <p id={descriptionId} role="alert" className="text-sm text-danger">{error}</p>}
+        {hint && !error && <p id={descriptionId} className="text-sm text-ink-muted">{hint}</p>}
       </div>
     );
   }

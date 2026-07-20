@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { validateRequest } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { DashboardNav } from "@/components/dashboard/DashboardNav";
+import { AppShellNav } from "@/components/dashboard/AppShellNav";
 import { Bud } from "@/components/dashboard/Bud";
 
 export default async function DashboardLayout({
@@ -27,9 +27,12 @@ export default async function DashboardLayout({
   });
 
   return (
-    <div className="min-h-screen">
-      <DashboardNav user={user} pendingInvitations={pendingInvitationCount} />
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div className="min-h-screen lg:pl-64">
+      <AppShellNav user={user} pendingInvitations={pendingInvitationCount} />
+      <main
+        id="main-content"
+        className="mx-auto max-w-7xl px-4 pb-28 pt-5 sm:px-6 sm:pt-8 lg:px-8 lg:pb-10"
+      >
         {children}
       </main>
       <Bud />

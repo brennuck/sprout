@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" role="img" aria-label="Bud the gardener">
+  <circle cx="80" cy="80" r="76" fill="#e4e8de"/>
+  <!-- shoulders / shirt -->
+  <path d="M28 148c8-28 28-44 52-44s44 16 52 44" fill="#536345"/>
+  <path d="M48 148c6-16 16-24 32-24s26 8 32 24" fill="#6a7d58"/>
+  <!-- neck -->
+  <rect x="70" y="98" width="20" height="16" rx="6" fill="#ddb88b"/>
+  <!-- head -->
+  <circle cx="80" cy="78" r="34" fill="#e9d1ae"/>
+  <!-- ears -->
+  <circle cx="46" cy="80" r="7" fill="#ddb88b"/>
+  <circle cx="114" cy="80" r="7" fill="#ddb88b"/>
+  <!-- hair -->
+  <path d="M50 70c4-22 18-34 30-34 12 0 26 12 30 34-8-10-18-14-30-14s-22 4-30 14Z" fill="#7b573e"/>
+  <!-- straw hat brim -->
+  <ellipse cx="80" cy="56" rx="52" ry="12" fill="#e9d1ae"/>
+  <ellipse cx="80" cy="54" rx="52" ry="10" fill="#f2e4ce"/>
+  <!-- hat crown -->
+  <path d="M54 54c2-22 12-34 26-34s24 12 26 34" fill="#ddb88b"/>
+  <path d="M58 54c2-16 10-26 22-26s20 10 22 26" fill="#e9d1ae"/>
+  <!-- hat band -->
+  <rect x="54" y="48" width="52" height="8" rx="3" fill="#536345"/>
+  <!-- tiny leaf on hat -->
+  <path d="M98 42c10-2 16-10 16-16-10 2-16 10-16 16Z" fill="#6a7d58"/>
+  <path d="M106 34v10" stroke="#424e38" stroke-width="2" stroke-linecap="round"/>
+  <!-- eyes -->
+  <circle cx="68" cy="80" r="4.5" fill="#2f3729"/>
+  <circle cx="92" cy="80" r="4.5" fill="#2f3729"/>
+  <circle cx="69.5" cy="78.5" r="1.4" fill="#fff"/>
+  <circle cx="93.5" cy="78.5" r="1.4" fill="#fff"/>
+  <!-- cheeks -->
+  <circle cx="58" cy="90" r="5" fill="#cd9c6a" opacity="0.45"/>
+  <circle cx="102" cy="90" r="5" fill="#cd9c6a" opacity="0.45"/>
+  <!-- smile -->
+  <path d="M68 94c6 8 18 8 24 0" fill="none" stroke="#7b573e" stroke-width="3.5" stroke-linecap="round"/>
+</svg>
