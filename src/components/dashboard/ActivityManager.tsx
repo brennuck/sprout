@@ -174,7 +174,7 @@ export function ActivityManager({
           <Input label="Amount" type="number" inputMode="decimal" min="0.01" step="0.01" value={editAmount} onChange={(event) => setEditAmount(event.target.value)} required />
           <Input label="Date" type="date" value={editDate} onChange={(event) => setEditDate(event.target.value)} required />
           {editing?.type === "EXPENSE" && <>
-            <Select label="Budget envelope" value={editEnvelopeId} onChange={(event) => setEditEnvelopeId(event.target.value)} options={[{ value: "", label: "Uncategorized" }, ...envelopes.filter((envelope) => envelope.accountId === editing.accountId && envelope.kind === "BUDGET").map((envelope) => ({ value: envelope.id, label: envelope.name }))]} />
+            <Select label="Spending envelope" value={editEnvelopeId} onChange={(event) => setEditEnvelopeId(event.target.value)} options={[{ value: "", label: "Uncategorized" }, ...envelopes.filter((envelope) => envelope.accountId === editing.accountId && envelope.kind !== "GOAL").map((envelope) => ({ value: envelope.id, label: envelope.name }))]} />
             <Select label="Goal impact" value={editGoalId} onChange={(event) => setEditGoalId(event.target.value)} options={[{ value: "", label: "Do not include" }, ...envelopes.filter((envelope) => envelope.kind === "GOAL").map((envelope) => ({ value: envelope.id, label: envelope.name }))]} />
           </>}
           <Button type="submit" className="w-full" isLoading={loading}>Save changes</Button>

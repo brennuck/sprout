@@ -25,7 +25,7 @@ interface AppShellNavProps {
 
 const navigation = [
   { href: "/dashboard", label: "Home", icon: Home, exact: true },
-  { href: "/budgets", label: "Budgets", icon: WalletCards },
+  { href: "/budgets", label: "Plan", icon: WalletCards },
   { href: "/income", label: "Income", icon: BadgeDollarSign },
   { href: "/reports", label: "Reports", icon: BarChart3 },
   { href: "/activity", label: "Activity", icon: Activity },

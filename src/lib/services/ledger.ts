@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { AppError } from "@/lib/errors";
 import { requireAccountAccess, requireEnvelopeAccess } from "@/lib/authorization";
 import { applyIncomePlan } from "@/lib/services/allocation";
+import { processDueRecurringContributions } from "@/lib/services/recurring-funding";
 
 interface TransactionInput {
   actorId: string;
@@ -46,7 +47,7 @@ export async function createLedgerTransaction(input: TransactionInput) {
   }
 
   const date = input.date ?? new Date();
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const transaction = await tx.transaction.create({
       data: {
         amount: input.amount,
@@ -95,6 +96,16 @@ export async function createLedgerTransaction(input: TransactionInput) {
 
     return { transaction, allocation };
   });
+
+  if (input.type === "INCOME") {
+    try {
+      await processDueRecurringContributions({ userId: access.ownerId });
+    } catch (error) {
+      console.error("Could not process due recurring contributions", error);
+    }
+  }
+
+  return result;
 }
 
 export async function deleteLedgerTransaction(actorId: string, transactionId: string) {
@@ -431,7 +442,7 @@ export async function convertLegacyAccount(
   sourceAccountId: string,
   destinationAccountId: string,
   envelopeName: string,
-  kind: "BUDGET" | "GOAL",
+  kind: "BUDGET" | "SINKING_FUND" | "GOAL",
 ) {
   if (sourceAccountId === destinationAccountId) {
     throw new AppError("Choose a different cash account", 400, "SAME_ACCOUNT");

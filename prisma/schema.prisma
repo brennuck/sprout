@@ -142,17 +142,25 @@ enum TransactionType {
 }
 
 model Envelope {
-  id            String       @id @default(cuid())
-  name          String
-  kind          EnvelopeKind @default(BUDGET)
-  targetAmount  Decimal?     @db.Decimal(12, 2)
-  monthlyTarget Decimal?     @db.Decimal(12, 2)
-  targetDate    DateTime?
-  rollover      Boolean      @default(true)
-  sortOrder     Int          @default(0)
-  archivedAt    DateTime?
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  id                  String              @id @default(cuid())
+  name                String
+  kind                EnvelopeKind        @default(BUDGET)
+  targetAmount        Decimal?            @db.Decimal(12, 2)
+  monthlyTarget       Decimal?            @db.Decimal(12, 2)
+  targetDate          DateTime?
+  rollover            Boolean             @default(true)
+  sortOrder           Int                 @default(0)
+  recurringAmount     Decimal?            @db.Decimal(12, 2)
+  recurringFrequency  RecurringFrequency?
+  recurringWeekday    Int?
+  recurringDayOfMonth Int?
+  recurringTimezone   String?
+  recurringEnabled    Boolean             @default(false)
+  nextRecurringAt     DateTime?
+  lastRecurringAt     DateTime?
+  archivedAt          DateTime?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
 
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -167,22 +175,30 @@ model Envelope {
 
   @@index([userId, archivedAt, sortOrder])
   @@index([accountId])
+  @@index([recurringEnabled, nextRecurringAt])
   @@map("envelopes")
 }
 
 enum EnvelopeKind {
   BUDGET
+  SINKING_FUND
   GOAL
 }
 
+enum RecurringFrequency {
+  WEEKLY
+  MONTHLY
+}
+
 model EnvelopeEntry {
-  id        String            @id @default(cuid())
-  amount    Decimal           @db.Decimal(12, 2)
-  type      EnvelopeEntryType
-  note      String?
-  groupId   String?
-  date      DateTime          @default(now())
-  createdAt DateTime          @default(now())
+  id            String            @id @default(cuid())
+  amount        Decimal           @db.Decimal(12, 2)
+  type          EnvelopeEntryType
+  note          String?
+  groupId       String?
+  recurrenceKey String?           @unique
+  date          DateTime          @default(now())
+  createdAt     DateTime          @default(now())
 
   envelopeId String
   envelope   Envelope @relation(fields: [envelopeId], references: [id], onDelete: Cascade)

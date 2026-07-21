@@ -22,7 +22,7 @@ const convertAccountSchema = z.object({
     sourceAccountId: z.string(),
     destinationAccountId: z.string(),
     envelopeName: z.string().trim().min(1).max(80),
-    kind: z.enum(["BUDGET", "GOAL"]),
+    kind: z.enum(["BUDGET", "SINKING_FUND", "GOAL"]),
 });
 
 export async function GET() {

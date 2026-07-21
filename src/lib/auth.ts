@@ -34,6 +34,30 @@ interface DatabaseUserAttributes {
   name: string | null;
 }
 
+function isTransientDatabaseError(error: unknown) {
+  const code =
+    typeof error === "object" && error !== null && "code" in error
+      ? String(error.code)
+      : "";
+  return ["P1001", "P1002", "P1017"].includes(code);
+}
+
+async function validateSessionWithRetry(sessionId: string) {
+  const retryDelays = [300, 900];
+
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await lucia.validateSession(sessionId);
+    } catch (error) {
+      if (!isTransientDatabaseError(error) || attempt >= retryDelays.length) {
+        throw error;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, retryDelays[attempt]));
+    }
+  }
+}
+
 export const validateRequest = cache(
   async (): Promise<{ user: User; session: Session } | { user: null; session: null }> => {
     const sessionId = (await cookies()).get(lucia.sessionCookieName)?.value ?? null;
@@ -44,7 +68,7 @@ export const validateRequest = cache(
       };
     }
 
-    const result = await lucia.validateSession(sessionId);
+    const result = await validateSessionWithRetry(sessionId);
     
     try {
       if (result.session && result.session.fresh) {

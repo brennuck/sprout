@@ -15,12 +15,19 @@ interface ModalProps {
 export function Modal({ isOpen, onClose, title, children, className }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
   const titleId = useId();
 
+  onCloseRef.current = onClose;
+
   useEffect(() => {
+    if (!isOpen) return;
+
     const previouslyFocused = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") onCloseRef.current();
       if (e.key === "Tab" && dialogRef.current) {
         const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
           'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
@@ -38,24 +45,22 @@ export function Modal({ isOpen, onClose, title, children, className }: ModalProp
       }
     };
 
-    if (isOpen) {
-      document.addEventListener("keydown", handleEscape);
-      document.body.style.overflow = "hidden";
-      requestAnimationFrame(() => {
-        const autofocus = dialogRef.current?.querySelector<HTMLElement>("[autofocus]");
-        const firstControl = dialogRef.current?.querySelector<HTMLElement>(
-          "input, select, textarea, button",
-        );
-        (autofocus || firstControl || dialogRef.current)?.focus();
-      });
-    }
+    document.addEventListener("keydown", handleEscape);
+    document.body.style.overflow = "hidden";
+    const focusFrame = requestAnimationFrame(() => {
+      const firstControl = contentRef.current?.querySelector<HTMLElement>(
+        '[autofocus], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [href]',
+      );
+      (firstControl || dialogRef.current)?.focus();
+    });
 
     return () => {
+      cancelAnimationFrame(focusFrame);
       document.removeEventListener("keydown", handleEscape);
-      document.body.style.overflow = "unset";
+      document.body.style.overflow = previousOverflow;
       previouslyFocused?.focus();
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -88,6 +93,7 @@ export function Modal({ isOpen, onClose, title, children, className }: ModalProp
           <button
             type="button"
             onClick={onClose}
+            data-modal-close
             aria-label="Close dialog"
             className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface-muted hover:text-ink focus-visible:ring-2 focus-visible:ring-focus"
           >
@@ -96,7 +102,7 @@ export function Modal({ isOpen, onClose, title, children, className }: ModalProp
         </div>
         
         {/* Content */}
-        <div className="overflow-y-auto p-4 pb-safe">
+        <div ref={contentRef} className="overflow-y-auto p-4 pb-safe">
           {children}
         </div>
       </div>

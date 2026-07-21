@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Plus, Repeat2, Users } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -36,49 +36,106 @@ export function SettingsManager({
   const [sourceId, setSourceId] = useState(legacy[0]?.id || "");
   const [destinationId, setDestinationId] = useState(cashAccounts[0]?.id || "");
   const [envelopeName, setEnvelopeName] = useState(legacy[0]?.name || "");
-  const [kind, setKind] = useState<"BUDGET" | "GOAL">("BUDGET");
+  const [kind, setKind] = useState<"BUDGET" | "SINKING_FUND" | "GOAL">("BUDGET");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  async function submit(url: string, init: RequestInit) {
+  useEffect(() => {
+    const nextLegacy = accounts.filter(
+      (account) =>
+        ["BUDGET", "ALLOWANCE"].includes(account.type) &&
+        !account.name.endsWith("(converted)"),
+    );
+    const nextCashAccounts = accounts.filter(
+      (account) => !["BUDGET", "ALLOWANCE"].includes(account.type),
+    );
+
+    if (!nextLegacy.some((account) => account.id === sourceId)) {
+      setSourceId(nextLegacy[0]?.id || "");
+      setEnvelopeName(nextLegacy[0]?.name || "");
+    }
+    if (!nextCashAccounts.some((account) => account.id === destinationId)) {
+      setDestinationId(nextCashAccounts[0]?.id || "");
+    }
+  }, [accounts, destinationId, sourceId]);
+
+  const closeModal = () => {
+    setModal(null);
+    setError("");
+  };
+
+  const resetAccountForm = () => {
+    setName("");
+    setType("SAVINGS");
+    setBalance("");
+  };
+
+  const resetConversionForm = () => {
+    setKind("BUDGET");
+    const nextLegacy = accounts.find(
+      (account) =>
+        ["BUDGET", "ALLOWANCE"].includes(account.type) &&
+        !account.name.endsWith("(converted)"),
+    );
+    setSourceId(nextLegacy?.id || "");
+    setEnvelopeName(nextLegacy?.name || "");
+  };
+
+  async function submit(url: string, init: RequestInit, onSuccess: () => void) {
     setLoading(true);
     setError("");
-    const response = await fetch(url, {
-      ...init,
-      headers: { "Content-Type": "application/json" },
-    });
-    const data = await response.json();
-    if (response.ok) {
-      setModal(null);
+    try {
+      const response = await fetch(url, {
+        ...init,
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Could not save changes");
+      }
+
+      onSuccess();
+      closeModal();
       router.refresh();
-    } else setError(data.error || "Could not save changes");
-    setLoading(false);
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "Could not save changes");
+    } finally {
+      setLoading(false);
+    }
   }
 
   const createAccount = (event: React.FormEvent) => {
     event.preventDefault();
-    return submit("/api/accounts", {
-      method: "POST",
-      body: JSON.stringify({
-        name,
-        type,
-        startingBalance: Number(balance || 0),
-      }),
-    });
+    return submit(
+      "/api/accounts",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          name,
+          type,
+          startingBalance: Number(balance || 0),
+        }),
+      },
+      resetAccountForm,
+    );
   };
 
   const convert = (event: React.FormEvent) => {
     event.preventDefault();
-    return submit("/api/accounts", {
-      method: "PATCH",
-      body: JSON.stringify({
-        action: "CONVERT_LEGACY",
-        sourceAccountId: sourceId,
-        destinationAccountId: destinationId,
-        envelopeName,
-        kind,
-      }),
-    });
+    return submit(
+      "/api/accounts",
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          action: "CONVERT_LEGACY",
+          sourceAccountId: sourceId,
+          destinationAccountId: destinationId,
+          envelopeName,
+          kind,
+        }),
+      },
+      resetConversionForm,
+    );
   };
 
   return (
@@ -129,7 +186,7 @@ export function SettingsManager({
         </Card>
       )}
 
-      <Modal isOpen={modal === "account"} onClose={() => setModal(null)} title="Add cash account">
+      <Modal isOpen={modal === "account"} onClose={closeModal} title="Add cash account">
         <form onSubmit={createAccount} className="space-y-4">
           {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-danger">{error}</p>}
           <Input label="Account name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Main checking" required />
@@ -139,13 +196,13 @@ export function SettingsManager({
         </form>
       </Modal>
 
-      <Modal isOpen={modal === "convert"} onClose={() => setModal(null)} title="Convert legacy account">
+      <Modal isOpen={modal === "convert"} onClose={closeModal} title="Convert legacy account">
         <form onSubmit={convert} className="space-y-4">
           {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-danger">{error}</p>}
           <Select label="Legacy account" value={sourceId} onChange={(event) => { setSourceId(event.target.value); setEnvelopeName(accounts.find((account) => account.id === event.target.value)?.name || ""); }} options={legacy.map((account) => ({ value: account.id, label: `${account.name} · ${formatCurrency(account.balance)}` }))} />
           <Select label="Move cash to" value={destinationId} onChange={(event) => setDestinationId(event.target.value)} options={cashAccounts.map((account) => ({ value: account.id, label: account.name }))} />
           <Input label="New envelope name" value={envelopeName} onChange={(event) => setEnvelopeName(event.target.value)} required />
-          <Select label="Envelope type" value={kind} onChange={(event) => setKind(event.target.value as "BUDGET" | "GOAL")} options={[{ value: "BUDGET", label: "Budget" }, { value: "GOAL", label: "Goal" }]} />
+          <Select label="Envelope type" value={kind} onChange={(event) => setKind(event.target.value as "BUDGET" | "SINKING_FUND" | "GOAL")} options={[{ value: "BUDGET", label: "Budget" }, { value: "SINKING_FUND", label: "Sinking fund" }, { value: "GOAL", label: "Goal" }]} />
           <p className="rounded-xl bg-surface-muted p-3 text-sm text-ink-secondary">The entire current balance will move to the destination account and be assigned to the new envelope. Historical activity stays with the legacy account.</p>
           <Button type="submit" className="w-full" isLoading={loading}>Confirm conversion</Button>
         </form>

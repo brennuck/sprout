@@ -9,16 +9,38 @@ import {
   requireEnvelopeAccess,
 } from "@/lib/authorization";
 import { fundEnvelope, moveEnvelopeMoney } from "@/lib/services/ledger";
+import { getNextRecurringAt } from "@/lib/services/recurring-funding";
+
+const recurringScheduleSchema = z.union([
+  z.object({ enabled: z.literal(false) }),
+  z.object({
+    enabled: z.literal(true),
+    amount: z.number().positive(),
+    frequency: z.literal("WEEKLY"),
+    weekday: z.number().int().min(0).max(6),
+    dayOfMonth: z.null().optional(),
+    timezone: z.string().trim().min(1).max(100),
+  }),
+  z.object({
+    enabled: z.literal(true),
+    amount: z.number().positive(),
+    frequency: z.literal("MONTHLY"),
+    weekday: z.null().optional(),
+    dayOfMonth: z.number().int().min(1).max(31),
+    timezone: z.string().trim().min(1).max(100),
+  }),
+]);
 
 const createSchema = z.object({
   action: z.literal("CREATE").optional().default("CREATE"),
   name: z.string().trim().min(1).max(80),
-  kind: z.enum(["BUDGET", "GOAL"]),
+  kind: z.enum(["BUDGET", "SINKING_FUND", "GOAL"]),
   accountId: z.string().min(1),
   targetAmount: z.number().positive().nullable().optional(),
   monthlyTarget: z.number().positive().nullable().optional(),
   targetDate: z.string().nullable().optional(),
   rollover: z.boolean().optional().default(true),
+  recurringSchedule: recurringScheduleSchema.optional(),
 });
 
 const actionSchema = z.discriminatedUnion("action", [
@@ -44,9 +66,15 @@ const updateSchema = z.object({
   rollover: z.boolean().optional(),
   sortOrder: z.number().int().min(0).optional(),
   archived: z.boolean().optional(),
+  recurringSchedule: recurringScheduleSchema.optional(),
 });
 
-function serializeEnvelope<T extends { targetAmount: unknown; monthlyTarget: unknown; entries: { amount: unknown }[] }>(
+function serializeEnvelope<T extends {
+  targetAmount: unknown;
+  monthlyTarget: unknown;
+  recurringAmount: unknown;
+  entries: { amount: unknown }[];
+}>(
   envelope: T,
 ) {
   const { entries, ...rest } = envelope;
@@ -54,6 +82,8 @@ function serializeEnvelope<T extends { targetAmount: unknown; monthlyTarget: unk
     ...rest,
     targetAmount: envelope.targetAmount == null ? null : Number(envelope.targetAmount),
     monthlyTarget: envelope.monthlyTarget == null ? null : Number(envelope.monthlyTarget),
+    recurringAmount:
+      envelope.recurringAmount == null ? null : Number(envelope.recurringAmount),
     balance: entries.reduce((sum, entry) => sum + Number(entry.amount), 0),
   };
 }
@@ -110,6 +140,38 @@ export async function POST(request: Request) {
 
     const input = createSchema.parse(body);
     const access = await requireAccountAccess(user.id, input.accountId, "EDIT");
+    if (
+      input.recurringSchedule?.enabled &&
+      !["SINKING_FUND", "GOAL"].includes(input.kind)
+    ) {
+      return NextResponse.json(
+        { error: "Automatic contributions are only available for sinking funds and goals" },
+        { status: 400 },
+      );
+    }
+    const recurring =
+      input.recurringSchedule?.enabled
+        ? {
+            recurringAmount: input.recurringSchedule.amount,
+            recurringFrequency: input.recurringSchedule.frequency,
+            recurringWeekday:
+              input.recurringSchedule.frequency === "WEEKLY"
+                ? input.recurringSchedule.weekday
+                : null,
+            recurringDayOfMonth:
+              input.recurringSchedule.frequency === "MONTHLY"
+                ? input.recurringSchedule.dayOfMonth
+                : null,
+            recurringTimezone: input.recurringSchedule.timezone,
+            recurringEnabled: true,
+            nextRecurringAt: getNextRecurringAt({
+              frequency: input.recurringSchedule.frequency,
+              weekday: input.recurringSchedule.weekday,
+              dayOfMonth: input.recurringSchedule.dayOfMonth,
+              timezone: input.recurringSchedule.timezone,
+            }),
+          }
+        : {};
     const envelope = await prisma.envelope.create({
       data: {
         name: input.name,
@@ -120,6 +182,7 @@ export async function POST(request: Request) {
         monthlyTarget: input.monthlyTarget,
         targetDate: input.targetDate ? new Date(input.targetDate) : null,
         rollover: input.rollover,
+        ...recurring,
       },
     });
     return NextResponse.json(envelope, { status: 201 });
@@ -134,7 +197,44 @@ export async function PATCH(request: Request) {
     const { user } = await validateRequest();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const input = updateSchema.parse(await request.json());
-    await requireEnvelopeAccess(user.id, input.id, "EDIT");
+    const { envelope: existing } = await requireEnvelopeAccess(user.id, input.id, "EDIT");
+    if (
+      input.recurringSchedule?.enabled &&
+      !["SINKING_FUND", "GOAL"].includes(existing.kind)
+    ) {
+      return NextResponse.json(
+        { error: "Automatic contributions are only available for sinking funds and goals" },
+        { status: 400 },
+      );
+    }
+    const recurring =
+      input.recurringSchedule === undefined
+        ? {}
+        : input.recurringSchedule.enabled
+          ? {
+              recurringAmount: input.recurringSchedule.amount,
+              recurringFrequency: input.recurringSchedule.frequency,
+              recurringWeekday:
+                input.recurringSchedule.frequency === "WEEKLY"
+                  ? input.recurringSchedule.weekday
+                  : null,
+              recurringDayOfMonth:
+                input.recurringSchedule.frequency === "MONTHLY"
+                  ? input.recurringSchedule.dayOfMonth
+                  : null,
+              recurringTimezone: input.recurringSchedule.timezone,
+              recurringEnabled: true,
+              nextRecurringAt: getNextRecurringAt({
+                frequency: input.recurringSchedule.frequency,
+                weekday: input.recurringSchedule.weekday,
+                dayOfMonth: input.recurringSchedule.dayOfMonth,
+                timezone: input.recurringSchedule.timezone,
+              }),
+            }
+          : {
+              recurringEnabled: false,
+              nextRecurringAt: null,
+            };
 
     const envelope = await prisma.envelope.update({
       where: { id: input.id },
@@ -152,6 +252,7 @@ export async function PATCH(request: Request) {
         sortOrder: input.sortOrder,
         archivedAt:
           input.archived === undefined ? undefined : input.archived ? new Date() : null,
+        ...recurring,
       },
     });
     return NextResponse.json(envelope);

@@ -32,6 +32,14 @@ export default async function BudgetsPage() {
         targetAmount: envelope.targetAmount == null ? null : Number(envelope.targetAmount),
         monthlyTarget: envelope.monthlyTarget == null ? null : Number(envelope.monthlyTarget),
         targetDate: envelope.targetDate?.toISOString() || null,
+        recurringAmount:
+          envelope.recurringAmount == null ? null : Number(envelope.recurringAmount),
+        recurringFrequency: envelope.recurringFrequency,
+        recurringWeekday: envelope.recurringWeekday,
+        recurringDayOfMonth: envelope.recurringDayOfMonth,
+        recurringTimezone: envelope.recurringTimezone,
+        recurringEnabled: envelope.recurringEnabled,
+        nextRecurringAt: envelope.nextRecurringAt?.toISOString() || null,
       }))}
       focusGoalId={preference?.goalEnvelopeId || null}
     />

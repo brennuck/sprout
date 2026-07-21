@@ -90,7 +90,7 @@ export function TransactionComposer({
           <Input label="What did you spend on?" value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Groceries" required />
           <Input label="Amount" type="number" inputMode="decimal" min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" required />
           <Select label="Cash account" value={accountId} onChange={(event) => { setAccountId(event.target.value); setEnvelopeId(""); }} options={accounts.map((account) => ({ value: account.id, label: account.name }))} />
-          <Select label="Budget envelope (optional)" value={envelopeId} onChange={(event) => setEnvelopeId(event.target.value)} options={[{ value: "", label: "Uncategorized" }, ...envelopes.filter((envelope) => envelope.accountId === accountId && envelope.kind === "BUDGET").map((envelope) => ({ value: envelope.id, label: `${envelope.name} · ${formatCurrency(envelope.balance)} available` }))]} />
+          <Select label="Spending envelope (optional)" value={envelopeId} onChange={(event) => setEnvelopeId(event.target.value)} options={[{ value: "", label: "Uncategorized" }, ...envelopes.filter((envelope) => envelope.accountId === accountId && envelope.kind !== "GOAL").map((envelope) => ({ value: envelope.id, label: `${envelope.name} · ${formatCurrency(envelope.balance)} available` }))]} />
           <Input label="Date" type="date" value={date} onChange={(event) => setDate(event.target.value)} required />
 
           {goals.length > 0 && (

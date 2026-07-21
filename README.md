@@ -6,7 +6,8 @@ A beautiful budgeting app that helps you grow your finances. Built with Next.js 
 
 - 🤖 **AI-Powered Assistant** - Meet Bud, your personal gardener! Chat naturally to add transactions, create accounts, transfer funds, and more
 - 🔐 **Secure Authentication** - Sign up and sign in with Lucia session-based auth
-- 💰 **Envelope Budgets** - Organize real account balances into virtual monthly budgets and goals
+- 💰 **Money Plan** - Organize real account balances into monthly budgets, sinking funds, and goals
+- 🗓️ **Automatic Contributions** - Add a fixed amount to sinking funds or goals weekly or monthly, with safe retries when money is not ready to assign
 - 💵 **Income Plans** - Automatically distribute recorded income with fixed, percentage, and remainder rules
 - 🎯 **Goal Motivation** - See actual goal progress and the hypothetical opportunity cost of spending
 - 📊 **Reports** - Explore cash flow, spending, allocation, net worth, and goal-impact charts
@@ -58,6 +59,7 @@ npm install
 DATABASE_URL="postgresql://username:password@host:5432/database?sslmode=require"
 NEXT_PUBLIC_APP_URL="http://localhost:3000"
 OPENAI_API_KEY="sk-..."
+CRON_SECRET="a-long-random-secret"
 ```
 
 3. Generate Prisma client and apply checked-in migrations:
@@ -102,8 +104,9 @@ npm run dev
 
 ### Envelope
 - Linked to one real `Account`
-- `kind`: BUDGET | GOAL
+- `kind`: BUDGET | SINKING_FUND | GOAL
 - Optional target amount, monthly target, and target date
+- Sinking funds and goals can have one timezone-aware WEEKLY or MONTHLY recurring contribution
 - Available balance is the sum of signed `EnvelopeEntry` ledger rows
 
 ### AllocationPlan
@@ -114,6 +117,8 @@ npm run dev
 ### Money invariants
 - Account balances represent real cash.
 - Envelope entries represent virtual assignments and must not create bank transfers.
+- Automatic sinking-fund contributions only use ready-to-assign cash; an underfunded contribution stays due and retries later.
+- Every scheduled occurrence has a unique key so retries cannot apply it twice.
 - Goal-impact spending is hypothetical and never changes funded goal progress.
 - Transaction, account, and envelope balance changes commit in one database transaction.
 
