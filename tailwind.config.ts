@@ -1,89 +1,95 @@
-import type { Config } from 'tailwindcss';
+import type { Config } from "tailwindcss";
+
+const token = (name: string) => `hsl(var(--${name}) / <alpha-value>)`;
 
 const config: Config = {
-  content: [
-    './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
-    './src/components/**/*.{js,ts,jsx,tsx,mdx}',
-    './src/app/**/*.{js,ts,jsx,tsx,mdx}',
-  ],
+  content: ["./src/**/*.{js,ts,jsx,tsx,mdx}"],
   theme: {
     extend: {
       colors: {
-        background: 'hsl(var(--surface-base) / <alpha-value>)',
-        foreground: 'hsl(var(--text-primary) / <alpha-value>)',
+        background: token("surface-base"),
+        foreground: token("text-primary"),
         surface: {
-          DEFAULT: 'hsl(var(--surface-raised) / <alpha-value>)',
-          muted: 'hsl(var(--surface-muted) / <alpha-value>)',
+          DEFAULT: token("surface-raised"),
+          muted: token("surface-muted"),
+          sunken: token("surface-sunken"),
+          inverse: token("surface-inverse"),
         },
+        overlay: token("overlay"),
         ink: {
-          DEFAULT: 'hsl(var(--text-primary) / <alpha-value>)',
-          secondary: 'hsl(var(--text-secondary) / <alpha-value>)',
-          muted: 'hsl(var(--text-muted) / <alpha-value>)',
+          DEFAULT: token("text-primary"),
+          secondary: token("text-secondary"),
+          muted: token("text-muted"),
+          inverse: token("text-inverse"),
         },
         brand: {
-          DEFAULT: 'hsl(var(--brand) / <alpha-value>)',
-          strong: 'hsl(var(--brand-strong) / <alpha-value>)',
-          soft: 'hsl(var(--brand-soft) / <alpha-value>)',
+          DEFAULT: token("brand"),
+          strong: token("brand-strong"),
+          soft: token("brand-soft"),
+          contrast: token("brand-contrast"),
         },
-        positive: 'hsl(var(--positive) / <alpha-value>)',
-        warning: 'hsl(var(--warning) / <alpha-value>)',
-        danger: 'hsl(var(--danger) / <alpha-value>)',
-        focus: 'hsl(var(--focus) / <alpha-value>)',
-        line: 'hsl(var(--border-subtle) / <alpha-value>)',
-        // Earthy green palette
-        sage: {
-          50: '#f6f7f4',
-          100: '#e4e8de',
-          200: '#c9d1be',
-          300: '#a7b496',
-          400: '#879875',
-          500: '#5f714f',
-          600: '#536345',
-          700: '#424e38',
-          800: '#374030',
-          900: '#2f3729',
-          950: '#181d14',
+        positive: { DEFAULT: token("positive"), soft: token("positive-soft") },
+        warning: { DEFAULT: token("warning"), soft: token("warning-soft") },
+        danger: { DEFAULT: token("danger"), soft: token("danger-soft") },
+        info: { DEFAULT: token("info"), soft: token("info-soft") },
+        focus: token("focus"),
+        line: {
+          DEFAULT: token("border-subtle"),
+          strong: token("border-strong"),
         },
-        // Warm cream tones
-        cream: {
-          50: '#fefdfb',
-          100: '#fcf9f3',
-          200: '#f8f1e4',
-          300: '#f2e4ce',
-          400: '#e9d1ae',
-          500: '#ddb88b',
-          600: '#cd9c6a',
-          700: '#b97f53',
-          800: '#976848',
-          900: '#7b573e',
-        },
+      },
+      borderRadius: {
+        sm: "var(--radius-sm)",
+        md: "var(--radius-md)",
+        lg: "var(--radius-lg)",
+      },
+      boxShadow: {
+        card: "0 1px 2px hsl(var(--shadow-color) / 0.04), 0 8px 24px -12px hsl(var(--shadow-color) / 0.12)",
+        float: "0 12px 32px -8px hsl(var(--shadow-color) / 0.25)",
+        sheet: "0 -8px 40px -12px hsl(var(--shadow-color) / 0.35)",
       },
       fontFamily: {
-        sans: ['var(--font-outfit)', 'system-ui', 'sans-serif'],
-        display: ['var(--font-fraunces)', 'Georgia', 'serif'],
+        sans: ["var(--font-outfit)", "system-ui", "sans-serif"],
+        display: ["var(--font-fraunces)", "Georgia", "serif"],
+      },
+      transitionDuration: {
+        instant: "var(--motion-instant)",
+        quick: "var(--motion-quick)",
       },
       animation: {
-        'fade-in': 'fadeIn 0.6s ease-out forwards',
-        'slide-up': 'slideUp 0.6s ease-out forwards',
-        'float': 'float 6s ease-in-out infinite',
-        'in': 'animateIn 0.2s ease-out',
+        "fade-in": "fadeIn var(--motion-quick) ease-out forwards",
+        "slide-up": "slideUp var(--motion-quick) cubic-bezier(0.2, 0.8, 0.2, 1) forwards",
+        "sheet-in": "sheetIn var(--motion-quick) cubic-bezier(0.2, 0.8, 0.2, 1) forwards",
+        "dialog-in": "dialogIn var(--motion-instant) ease-out forwards",
+        float: "float 6s ease-in-out infinite",
+        in: "animateIn var(--motion-instant) ease-out",
+        shimmer: "shimmer 1.6s linear infinite",
       },
       keyframes: {
-        fadeIn: {
-          '0%': { opacity: '0' },
-          '100%': { opacity: '1' },
-        },
+        fadeIn: { "0%": { opacity: "0" }, "100%": { opacity: "1" } },
         slideUp: {
-          '0%': { opacity: '0', transform: 'translateY(20px)' },
-          '100%': { opacity: '1', transform: 'translateY(0)' },
+          "0%": { opacity: "0", transform: "translateY(20px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        sheetIn: {
+          "0%": { transform: "translateY(100%)" },
+          "100%": { transform: "translateY(0)" },
+        },
+        dialogIn: {
+          "0%": { opacity: "0", transform: "scale(0.96) translateY(8px)" },
+          "100%": { opacity: "1", transform: "scale(1) translateY(0)" },
         },
         float: {
-          '0%, 100%': { transform: 'translateY(0px)' },
-          '50%': { transform: 'translateY(-10px)' },
+          "0%, 100%": { transform: "translateY(0px)" },
+          "50%": { transform: "translateY(-10px)" },
         },
         animateIn: {
-          '0%': { opacity: '0', transform: 'scale(0.95)' },
-          '100%': { opacity: '1', transform: 'scale(1)' },
+          "0%": { opacity: "0", transform: "scale(0.95)" },
+          "100%": { opacity: "1", transform: "scale(1)" },
+        },
+        shimmer: {
+          "0%": { backgroundPosition: "-200% 0" },
+          "100%": { backgroundPosition: "200% 0" },
         },
       },
     },
@@ -92,4 +98,3 @@ const config: Config = {
 };
 
 export default config;
-

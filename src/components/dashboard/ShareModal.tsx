@@ -1,23 +1,17 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { 
-  Users, 
-  Send, 
-  Mail, 
-  Check, 
-  X, 
-  Clock, 
-  Trash2, 
-  UserPlus,
-  Eye,
-  Edit3,
-  LogOut
-} from "lucide-react";
-import { Modal } from "@/components/ui/Modal";
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Check, Clock, Edit3, Eye, LogOut, Mail, Send, Trash2, UserPlus, Users, X } from "lucide-react";
+import { Sheet } from "@/components/ui/Sheet";
 import { Button } from "@/components/ui/Button";
+import { IconButton } from "@/components/ui/IconButton";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { useToast } from "@/components/ui/Toast";
 
 interface ShareData {
   sentInvitations: Array<{
@@ -45,405 +39,330 @@ interface ShareData {
   }>;
 }
 
-interface ShareModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-}
+type Tab = "invite" | "shared" | "pending";
 
-export function ShareModal({ isOpen, onClose }: ShareModalProps) {
-  const [activeTab, setActiveTab] = useState<"invite" | "shared" | "pending">("invite");
+/** Household sharing management. Renders inline (Settings) or inside ShareSheet. */
+export function SharingPanel({ active = true }: { active?: boolean }) {
+  const router = useRouter();
+  const toast = useToast();
+  const [tab, setTab] = useState<Tab>("invite");
   const [email, setEmail] = useState("");
   const [permission, setPermission] = useState("VIEW");
-  const [isLoading, setIsLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  const [shareData, setShareData] = useState<ShareData | null>(null);
-  const [isLoadingData, setIsLoadingData] = useState(true);
+  const [data, setData] = useState<ShareData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [confirmRevoke, setConfirmRevoke] = useState<{ id: string; kind: "revoke" | "leave" } | null>(null);
 
-  const fetchShareData = async () => {
+  const load = useCallback(async () => {
     try {
-      const res = await fetch("/api/invitations");
-      if (res.ok) {
-        const data = await res.json();
-        setShareData(data);
-      }
-    } catch (err) {
-      console.error("Failed to fetch share data:", err);
+      const response = await fetch("/api/invitations");
+      if (response.ok) setData(await response.json());
+    } catch {
+      // Keep whatever we had; the user can retry by reopening.
     } finally {
-      setIsLoadingData(false);
+      setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    if (isOpen) {
-      fetchShareData();
-    }
-  }, [isOpen]);
+    if (active) void load();
+  }, [active, load]);
 
-  const handleInvite = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const call = async (input: RequestInfo, init: RequestInit | undefined, success: string) => {
+    const response = await fetch(input, init);
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      toast.show({ title: body.error || "Something went wrong", variant: "error" });
+      return false;
+    }
+    toast.show({ title: success, variant: "success" });
+    await load();
+    router.refresh();
+    return true;
+  };
+
+  const invite = async (event: React.FormEvent) => {
+    event.preventDefault();
     if (!email) {
-      setError("Please enter an email address");
+      setError("Enter an email address");
       return;
     }
-
-    setIsLoading(true);
+    setSubmitting(true);
     setError("");
-    setSuccess("");
-
-    try {
-      const res = await fetch("/api/invitations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, permission }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to send invitation");
-      }
-
-      setSuccess("Invitation sent successfully!");
+    const response = await fetch("/api/invitations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, permission }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setError(body.error || "Could not send the invitation");
+    } else {
+      toast.show({ title: `Invitation sent to ${email}`, variant: "success" });
       setEmail("");
-      fetchShareData();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
-    } finally {
-      setIsLoading(false);
+      await load();
     }
+    setSubmitting(false);
   };
 
-  const handleAcceptInvitation = async (invitationId: string) => {
-    try {
-      const res = await fetch(`/api/invitations/${invitationId}/accept`, {
-        method: "POST",
-      });
-
-      if (res.ok) {
-        fetchShareData();
-      }
-    } catch (err) {
-      console.error("Failed to accept invitation:", err);
-    }
-  };
-
-  const handleDeclineInvitation = async (invitationId: string) => {
-    try {
-      const res = await fetch(`/api/invitations/${invitationId}/decline`, {
-        method: "POST",
-      });
-
-      if (res.ok) {
-        fetchShareData();
-      }
-    } catch (err) {
-      console.error("Failed to decline invitation:", err);
-    }
-  };
-
-  const handleCancelInvitation = async (invitationId: string) => {
-    try {
-      const res = await fetch(`/api/invitations?id=${invitationId}`, {
-        method: "DELETE",
-      });
-
-      if (res.ok) {
-        fetchShareData();
-      }
-    } catch (err) {
-      console.error("Failed to cancel invitation:", err);
-    }
-  };
-
-  const handleRevokeShare = async (shareId: string) => {
-    if (!confirm("Are you sure you want to revoke this access?")) return;
-
-    try {
-      const res = await fetch(`/api/shares?id=${shareId}`, {
-        method: "DELETE",
-      });
-
-      if (res.ok) {
-        fetchShareData();
-      }
-    } catch (err) {
-      console.error("Failed to revoke share:", err);
-    }
-  };
-
-  const handleLeaveShare = async (shareId: string) => {
-    if (!confirm("Are you sure you want to leave this shared dashboard?")) return;
-
-    try {
-      const res = await fetch(`/api/shares?id=${shareId}`, {
-        method: "DELETE",
-      });
-
-      if (res.ok) {
-        fetchShareData();
-      }
-    } catch (err) {
-      console.error("Failed to leave share:", err);
-    }
-  };
-
-  const pendingCount = (shareData?.receivedInvitations?.length || 0);
-  const tabs: Array<{ id: "invite" | "shared" | "pending"; label: string; icon: typeof UserPlus; badge?: number }> = [
-    { id: "invite", label: "Invite", icon: UserPlus },
-    { id: "shared", label: "Shared", icon: Users },
-    { id: "pending", label: "Pending", icon: Clock, badge: pendingCount > 0 ? pendingCount : undefined },
-  ];
+  const pendingCount = data?.receivedInvitations?.length || 0;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Share Your Dashboard">
-      <div className="space-y-4">
-        {/* Tabs */}
-        <div className="flex gap-1 p-1 bg-sage-100 rounded-xl">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                activeTab === tab.id
-                  ? "bg-white text-sage-900 shadow-sm"
-                  : "text-sage-600 hover:text-sage-900"
-              }`}
-            >
-              <tab.icon className="w-4 h-4" />
-              {tab.label}
-              {tab.badge && (
-                <span className="px-1.5 py-0.5 text-xs bg-sage-500 text-white rounded-full">
-                  {tab.badge}
-                </span>
-              )}
-            </button>
-          ))}
-        </div>
+    <div className="space-y-5">
+      <SegmentedControl<Tab>
+        label="Sharing sections"
+        value={tab}
+        onChange={setTab}
+        options={[
+          { value: "invite", label: "Invite", icon: <UserPlus className="h-4 w-4" aria-hidden="true" /> },
+          { value: "shared", label: "Access", icon: <Users className="h-4 w-4" aria-hidden="true" /> },
+          {
+            value: "pending",
+            label: (
+              <span className="inline-flex items-center gap-1.5">
+                Pending
+                {pendingCount > 0 && (
+                  <span className="rounded-full bg-brand px-1.5 text-[11px] font-bold text-brand-contrast">
+                    {pendingCount}
+                  </span>
+                )}
+              </span>
+            ),
+            icon: <Clock className="h-4 w-4" aria-hidden="true" />,
+          },
+        ]}
+      />
 
-        {/* Invite Tab */}
-        {activeTab === "invite" && (
-          <form onSubmit={handleInvite} className="space-y-4">
-            {error && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
-                {error}
-              </div>
-            )}
-            {success && (
-              <div className="p-3 bg-sage-50 border border-sage-200 rounded-xl text-sage-700 text-sm flex items-center gap-2">
-                <Check className="w-4 h-4" />
-                {success}
-              </div>
-            )}
+      {tab === "invite" && (
+        <form onSubmit={invite} className="space-y-4">
+          <Input
+            label="Email address"
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            placeholder="partner@example.com"
+            autoComplete="email"
+            error={error || undefined}
+            data-autofocus
+          />
+          <Select
+            label="Permission"
+            value={permission}
+            onChange={(event) => setPermission(event.target.value)}
+            options={[
+              { value: "VIEW", label: "View only — can see everything" },
+              { value: "EDIT", label: "Edit — can add and change money moves" },
+            ]}
+          />
+          <Button type="submit" className="w-full" isLoading={submitting} loadingLabel="Sending…">
+            <Send className="h-4 w-4" aria-hidden="true" /> Send invitation
+          </Button>
 
-            <Input
-              label="Email Address"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="friend@example.com"
-              autoFocus
-            />
-
-            <Select
-              label="Permission"
-              value={permission}
-              onChange={(e) => setPermission(e.target.value)}
-              options={[
-                { value: "VIEW", label: "View Only - Can see your dashboard" },
-                { value: "EDIT", label: "Edit - Can add transactions" },
-              ]}
-            />
-
-            <Button type="submit" className="w-full" isLoading={isLoading}>
-              <Send className="w-4 h-4" />
-              Send Invitation
-            </Button>
-
-            {/* Sent invitations */}
-            {shareData?.sentInvitations && shareData.sentInvitations.length > 0 && (
-              <div className="pt-4 border-t border-sage-100">
-                <h4 className="text-sm font-medium text-sage-700 mb-3">Sent Invitations</h4>
-                <div className="space-y-2">
-                  {shareData.sentInvitations.map((inv) => (
-                    <div
-                      key={inv.id}
-                      className="flex items-center justify-between p-3 bg-sage-50 rounded-xl"
-                    >
-                      <div className="flex items-center gap-3">
-                        <Mail className="w-4 h-4 text-sage-500" />
-                        <div>
-                          <p className="text-sm font-medium text-sage-900">{inv.email}</p>
-                          <p className="text-xs text-sage-500 capitalize">
-                            {inv.status.toLowerCase()} • {inv.permission.toLowerCase()} access
-                          </p>
-                        </div>
+          {data?.sentInvitations && data.sentInvitations.length > 0 && (
+            <div className="border-t border-line pt-4">
+              <h3 className="mb-3 text-sm font-semibold text-ink-secondary">Sent invitations</h3>
+              <ul className="space-y-2">
+                {data.sentInvitations.map((invitation) => (
+                  <li key={invitation.id} className="flex items-center justify-between gap-3 rounded-xl bg-surface-muted p-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <Mail className="h-4 w-4 flex-none text-ink-muted" aria-hidden="true" />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-ink">{invitation.email}</p>
+                        <p className="text-xs capitalize text-ink-muted">
+                          {invitation.status.toLowerCase()} · {invitation.permission.toLowerCase()} access
+                        </p>
                       </div>
-                      {inv.status === "PENDING" && (
-                        <button
-                          onClick={() => handleCancelInvitation(inv.id)}
-                          className="p-1.5 text-sage-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                          title="Cancel invitation"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      )}
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </form>
-        )}
-
-        {/* Shared Tab */}
-        {activeTab === "shared" && (
-          <div className="space-y-4">
-            {/* Dashboards I've shared */}
-            <div>
-              <h4 className="text-sm font-medium text-sage-700 mb-3">People with Access</h4>
-              {isLoadingData ? (
-                <p className="text-sm text-sage-500 text-center py-4">Loading...</p>
-              ) : shareData?.sharedByMe && shareData.sharedByMe.length > 0 ? (
-                <div className="space-y-2">
-                  {shareData.sharedByMe.map((share) => (
-                    <div
-                      key={share.id}
-                      className="flex items-center justify-between p-3 bg-sage-50 rounded-xl"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-sage-200 rounded-full">
-                          <Users className="w-4 h-4 text-sage-600" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-sage-900">
-                            {share.viewer.name || share.viewer.email}
-                          </p>
-                          <p className="text-xs text-sage-500 flex items-center gap-1">
-                            {share.permission === "EDIT" ? (
-                              <><Edit3 className="w-3 h-3" /> Can edit</>
-                            ) : (
-                              <><Eye className="w-3 h-3" /> View only</>
-                            )}
-                          </p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => handleRevokeShare(share.id)}
-                        className="p-1.5 text-sage-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                        title="Revoke access"
+                    {invitation.status === "PENDING" && (
+                      <IconButton
+                        label={`Cancel invitation to ${invitation.email}`}
+                        variant="danger"
+                        size="sm"
+                        onClick={() =>
+                          call(`/api/invitations?id=${invitation.id}`, { method: "DELETE" }, "Invitation cancelled")
+                        }
                       >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-sage-500 text-center py-4">
-                  You haven&apos;t shared your dashboard with anyone yet
-                </p>
-              )}
+                        <X />
+                      </IconButton>
+                    )}
+                  </li>
+                ))}
+              </ul>
             </div>
+          )}
+        </form>
+      )}
 
-            {/* Dashboards shared with me */}
-            <div className="pt-4 border-t border-sage-100">
-              <h4 className="text-sm font-medium text-sage-700 mb-3">Shared with Me</h4>
-              {isLoadingData ? (
-                <p className="text-sm text-sage-500 text-center py-4">Loading...</p>
-              ) : shareData?.sharedWithMe && shareData.sharedWithMe.length > 0 ? (
-                <div className="space-y-2">
-                  {shareData.sharedWithMe.map((share) => (
-                    <div
-                      key={share.id}
-                      className="flex items-center justify-between p-3 bg-blue-50 rounded-xl"
+      {tab === "shared" && (
+        <div className="space-y-5">
+          <section>
+            <h3 className="mb-3 text-sm font-semibold text-ink-secondary">People with access to your money</h3>
+            {loading ? (
+              <Skeleton className="h-14 w-full" />
+            ) : data?.sharedByMe?.length ? (
+              <ul className="space-y-2">
+                {data.sharedByMe.map((share) => (
+                  <li key={share.id} className="flex items-center justify-between gap-3 rounded-xl bg-surface-muted p-3">
+                    <PersonRow
+                      name={share.viewer.name || share.viewer.email}
+                      permission={share.permission}
+                    />
+                    <IconButton
+                      label={`Revoke access for ${share.viewer.name || share.viewer.email}`}
+                      variant="danger"
+                      size="sm"
+                      onClick={() => setConfirmRevoke({ id: share.id, kind: "revoke" })}
                     >
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-blue-200 rounded-full">
-                          <Users className="w-4 h-4 text-blue-600" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-sage-900">
-                            {share.owner.name || share.owner.email}&apos;s Dashboard
-                          </p>
-                          <p className="text-xs text-sage-500 flex items-center gap-1">
-                            {share.permission === "EDIT" ? (
-                              <><Edit3 className="w-3 h-3" /> Can edit</>
-                            ) : (
-                              <><Eye className="w-3 h-3" /> View only</>
-                            )}
-                          </p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => handleLeaveShare(share.id)}
-                        className="p-1.5 text-sage-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                        title="Leave dashboard"
-                      >
-                        <LogOut className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-sage-500 text-center py-4">
-                  No one has shared their dashboard with you yet
-                </p>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Pending Tab */}
-        {activeTab === "pending" && (
-          <div className="space-y-2">
-            {isLoadingData ? (
-              <p className="text-sm text-sage-500 text-center py-4">Loading...</p>
-            ) : shareData?.receivedInvitations && shareData.receivedInvitations.length > 0 ? (
-              shareData.receivedInvitations.map((inv) => (
-                <div
-                  key={inv.id}
-                  className="flex items-center justify-between p-4 bg-sage-50 rounded-xl"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-sage-200 rounded-full">
-                      <Mail className="w-4 h-4 text-sage-600" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-sage-900">
-                        {inv.sender.name || inv.sender.email}
-                      </p>
-                      <p className="text-xs text-sage-500">
-                        Invited you to view their dashboard
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleAcceptInvitation(inv.id)}
-                      className="p-2 text-sage-600 hover:text-sage-900 hover:bg-sage-100 rounded-lg transition-all"
-                      title="Accept"
-                    >
-                      <Check className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDeclineInvitation(inv.id)}
-                      className="p-2 text-sage-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                      title="Decline"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))
+                      <Trash2 />
+                    </IconButton>
+                  </li>
+                ))}
+              </ul>
             ) : (
-              <p className="text-sm text-sage-500 text-center py-8">
-                No pending invitations
-              </p>
+              <EmptyState compact title="Not shared yet" description="Invite a partner to plan together." />
             )}
+          </section>
+
+          <section className="border-t border-line pt-4">
+            <h3 className="mb-3 text-sm font-semibold text-ink-secondary">Shared with you</h3>
+            {loading ? (
+              <Skeleton className="h-14 w-full" />
+            ) : data?.sharedWithMe?.length ? (
+              <ul className="space-y-2">
+                {data.sharedWithMe.map((share) => (
+                  <li key={share.id} className="flex items-center justify-between gap-3 rounded-xl bg-info-soft p-3">
+                    <PersonRow
+                      name={`${share.owner.name || share.owner.email}'s dashboard`}
+                      permission={share.permission}
+                    />
+                    <IconButton
+                      label="Leave this shared dashboard"
+                      variant="danger"
+                      size="sm"
+                      onClick={() => setConfirmRevoke({ id: share.id, kind: "leave" })}
+                    >
+                      <LogOut />
+                    </IconButton>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyState compact title="Nothing shared with you" description="Invitations you accept will show here." />
+            )}
+          </section>
+        </div>
+      )}
+
+      {tab === "pending" && (
+        <div>
+          {loading ? (
+            <Skeleton className="h-16 w-full" />
+          ) : data?.receivedInvitations?.length ? (
+            <ul className="space-y-2">
+              {data.receivedInvitations.map((invitation) => (
+                <li key={invitation.id} className="flex items-center justify-between gap-3 rounded-xl bg-surface-muted p-3">
+                  <PersonRow
+                    name={invitation.sender.name || invitation.sender.email}
+                    permission={invitation.permission}
+                    caption="invited you to their dashboard"
+                  />
+                  <div className="flex gap-1">
+                    <IconButton
+                      label={`Accept invitation from ${invitation.sender.name || invitation.sender.email}`}
+                      variant="primary"
+                      size="sm"
+                      onClick={() =>
+                        call(`/api/invitations/${invitation.id}/accept`, { method: "POST" }, "Invitation accepted")
+                      }
+                    >
+                      <Check />
+                    </IconButton>
+                    <IconButton
+                      label={`Decline invitation from ${invitation.sender.name || invitation.sender.email}`}
+                      variant="danger"
+                      size="sm"
+                      onClick={() =>
+                        call(`/api/invitations/${invitation.id}/decline`, { method: "POST" }, "Invitation declined")
+                      }
+                    >
+                      <X />
+                    </IconButton>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <EmptyState compact icon={<Clock />} title="No pending invitations" />
+          )}
+        </div>
+      )}
+
+      <Sheet
+        open={Boolean(confirmRevoke)}
+        onClose={() => setConfirmRevoke(null)}
+        title={confirmRevoke?.kind === "leave" ? "Leave shared dashboard?" : "Revoke access?"}
+        size="sm"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setConfirmRevoke(null)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              onClick={async () => {
+                if (!confirmRevoke) return;
+                const ok = await call(
+                  `/api/shares?id=${confirmRevoke.id}`,
+                  { method: "DELETE" },
+                  confirmRevoke.kind === "leave" ? "You left the shared dashboard" : "Access revoked",
+                );
+                if (ok) setConfirmRevoke(null);
+              }}
+            >
+              {confirmRevoke?.kind === "leave" ? "Leave" : "Revoke"}
+            </Button>
           </div>
-        )}
-      </div>
-    </Modal>
+        }
+      >
+        <p className="text-sm text-ink-secondary">
+          {confirmRevoke?.kind === "leave"
+            ? "You will no longer see this person's accounts, envelopes, or activity."
+            : "They will immediately lose access to your dashboard. You can invite them again later."}
+        </p>
+      </Sheet>
+    </div>
   );
 }
 
+function PersonRow({ name, permission, caption }: { name: string; permission: string; caption?: string }) {
+  return (
+    <div className="flex min-w-0 items-center gap-3">
+      <span className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-brand-soft text-brand-strong">
+        <Users className="h-4 w-4" aria-hidden="true" />
+      </span>
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium text-ink">{name}</p>
+        <p className="flex items-center gap-1 text-xs text-ink-muted">
+          {caption ? (
+            caption
+          ) : permission === "EDIT" ? (
+            <>
+              <Edit3 className="h-3 w-3" aria-hidden="true" /> Can edit
+            </>
+          ) : (
+            <>
+              <Eye className="h-3 w-3" aria-hidden="true" /> View only
+            </>
+          )}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+export function ShareModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  return (
+    <Sheet open={isOpen} onClose={onClose} title="Household sharing" description="Plan money together with view or edit access.">
+      <SharingPanel active={isOpen} />
+    </Sheet>
+  );
+}

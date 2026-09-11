@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateGoalImpact } from "@/lib/services/reports";
+import { calculateGoalImpact } from "@/lib/services/reports-math";
 
 describe("calculateGoalImpact", () => {
   it("keeps actual progress separate from hypothetical spending", () => {

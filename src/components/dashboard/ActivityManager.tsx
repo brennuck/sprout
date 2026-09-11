@@ -1,123 +1,99 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Pencil, Search, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/Button";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Filter, Search, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Select";
-import { formatCurrency, formatDate } from "@/lib/utils";
-import type { BudgetAccount, BudgetEnvelope } from "@/components/dashboard/BudgetManager";
+import { Sheet } from "@/components/ui/Sheet";
+import { Chip, ChipRow } from "@/components/ui/Chip";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Amount } from "@/components/ui/Stat";
+import { MoneyInput, parseMoney } from "@/components/ui/MoneyInput";
+import { Textarea } from "@/components/ui/Textarea";
+import { useToast } from "@/components/ui/Toast";
+import { useSnapshot } from "@/components/shell/SnapshotProvider";
+import { useAddSheet } from "@/components/add/AddSheet";
+import {
+  deleteTransactionAction,
+  loadTransactionsAction,
+  restoreTransactionAction,
+  updateTransactionAction,
+} from "@/lib/actions/transactions";
+import { formatCurrency, formatDate, formatMonthDay, isoDateKey } from "@/lib/utils";
+import type { TransactionFilters, TransactionPage } from "@/lib/data/transactions";
+import type { TransactionKind, TransactionRow } from "@/lib/data/types";
 
-interface ActivityItem {
-  id: string;
-  amount: number;
-  description: string;
-  type: "INCOME" | "EXPENSE" | "TRANSFER";
-  date: string;
-  accountId: string;
-  accountName: string;
-  transferToAccountId: string | null;
-  envelopeId: string | null;
-  envelopeName: string | null;
-  goalImpactEnvelopeId: string | null;
-  goalImpactName: string | null;
+interface ActivityManagerProps {
+  initial: TransactionPage;
+  initialFilters: TransactionFilters;
 }
 
-export function ActivityManager({
-  transactions,
-  accounts,
-  envelopes,
-  initialEnvelopeId,
-}: {
-  transactions: ActivityItem[];
-  accounts: BudgetAccount[];
-  envelopes: BudgetEnvelope[];
-  initialEnvelopeId?: string;
-}) {
-  const router = useRouter();
-  const [search, setSearch] = useState("");
-  const [type, setType] = useState("ALL");
-  const [accountId, setAccountId] = useState("ALL");
-  const [envelopeId, setEnvelopeId] = useState(initialEnvelopeId || "ALL");
-  const [page, setPage] = useState(1);
-  const [editing, setEditing] = useState<ActivityItem | null>(null);
-  const [deleting, setDeleting] = useState<ActivityItem | null>(null);
-  const [editDescription, setEditDescription] = useState("");
-  const [editAmount, setEditAmount] = useState("");
-  const [editDate, setEditDate] = useState("");
-  const [editEnvelopeId, setEditEnvelopeId] = useState("");
-  const [editGoalId, setEditGoalId] = useState("");
-  const [error, setError] = useState("");
+export function ActivityManager({ initial, initialFilters }: ActivityManagerProps) {
+  const snapshot = useSnapshot();
+  const toast = useToast();
+  const { openAdd } = useAddSheet();
+  const searchParams = useSearchParams();
+  const [filters, setFilters] = useState<TransactionFilters>(initialFilters);
+  const [page, setPage] = useState(initial);
   const [loading, setLoading] = useState(false);
-  const pageSize = 15;
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [editing, setEditing] = useState<TransactionRow | null>(null);
+  const [deleting, setDeleting] = useState<TransactionRow | null>(null);
 
-  const filtered = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return transactions.filter((item) => {
-      if (query && !item.description.toLowerCase().includes(query)) return false;
-      if (type !== "ALL" && item.type !== type) return false;
-      if (accountId !== "ALL" && item.accountId !== accountId && item.transferToAccountId !== accountId) return false;
-      if (envelopeId !== "ALL" && item.envelopeId !== envelopeId) return false;
-      return true;
-    });
-  }, [transactions, search, type, accountId, envelopeId]);
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const visible = filtered.slice((page - 1) * pageSize, page * pageSize);
+  useEffect(() => {
+    if (searchParams.get("focus") === "search") {
+      document.querySelector<HTMLInputElement>("[data-search-input]")?.focus();
+    }
+  }, [searchParams]);
 
-  const applyFilter = (setter: (value: string) => void, value: string) => {
-    setter(value);
-    setPage(1);
-  };
-
-  const openEdit = (item: ActivityItem) => {
-    setEditing(item);
-    setEditDescription(item.description);
-    setEditAmount(String(item.amount));
-    setEditDate(item.date.slice(0, 10));
-    setEditEnvelopeId(item.envelopeId || "");
-    setEditGoalId(item.goalImpactEnvelopeId || "");
-    setError("");
-  };
-
-  const saveEdit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (!editing) return;
+  const apply = async (next: TransactionFilters, cursor?: string | null) => {
     setLoading(true);
-    const response = await fetch("/api/transactions", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: editing.id,
-        description: editDescription,
-        amount: Number(editAmount),
-        date: editDate,
-        envelopeId: editEnvelopeId || null,
-        goalImpactEnvelopeId: editGoalId || null,
-      }),
-    });
-    const data = await response.json();
-    if (response.ok) {
-      setEditing(null);
-      router.refresh();
-    } else setError(data.error || "Could not update transaction");
+    const result = await loadTransactionsAction(next, cursor);
     setLoading(false);
+    if (!result.ok) {
+      toast.show({ title: result.error, variant: "error" });
+      return;
+    }
+    if (cursor) {
+      setPage((current) => ({
+        rows: [...current.rows, ...result.data.rows],
+        nextCursor: result.data.nextCursor,
+        total: current.total,
+      }));
+    } else {
+      setPage(result.data);
+    }
+    setFilters(next);
   };
 
-  const confirmDelete = async () => {
-    if (!deleting) return;
-    setLoading(true);
-    const endpoint = deleting.type === "TRANSFER" ? "/api/transfers" : "/api/transactions";
-    const response = await fetch(`${endpoint}?id=${deleting.id}`, { method: "DELETE" });
-    const data = await response.json();
-    if (response.ok) {
-      setDeleting(null);
-      router.refresh();
-    } else setError(data.error || "Could not delete transaction");
-    setLoading(false);
-  };
+  const grouped = useMemo(() => {
+    const groups: { key: string; label: string; total: number; rows: TransactionRow[] }[] = [];
+    for (const row of page.rows) {
+      const key = isoDateKey(row.date);
+      const last = groups[groups.length - 1];
+      const signed = row.type === "INCOME" || (row.type === "ADJUSTMENT" && row.amount > 0) ? row.amount : row.type === "TRANSFER" ? 0 : -Math.abs(row.amount);
+      if (last?.key === key) {
+        last.rows.push(row);
+        last.total += signed;
+      } else {
+        groups.push({ key, label: formatDate(row.date), total: signed, rows: [row] });
+      }
+    }
+    return groups;
+  }, [page.rows]);
+
+  const activeFilters = [
+    filters.type && filters.type !== "ALL" ? filters.type : null,
+    filters.accountId && filters.accountId !== "ALL" ? snapshot.accounts.find((account) => account.id === filters.accountId)?.name : null,
+    filters.envelopeId && filters.envelopeId !== "ALL" && filters.envelopeId !== "NONE"
+      ? snapshot.envelopes.find((envelope) => envelope.id === filters.envelopeId)?.name
+      : filters.envelopeId === "NONE"
+        ? "Uncategorized"
+        : null,
+  ].filter(Boolean) as string[];
 
   return (
     <div className="space-y-6">
@@ -127,65 +103,292 @@ export function ActivityManager({
         <p className="mt-2 text-ink-secondary">Find, review, and correct every money move.</p>
       </div>
 
-      <Card className="p-4">
-        <div className="grid gap-3 md:grid-cols-4">
-          <div className="relative md:col-span-1">
+      <Card className="p-3">
+        <div className="flex gap-2">
+          <div className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-ink-muted" aria-hidden="true" />
             <label htmlFor="activity-search" className="sr-only">Search activity</label>
-            <input id="activity-search" value={search} onChange={(event) => applyFilter(setSearch, event.target.value)} placeholder="Search activity" className="min-h-11 w-full rounded-xl border border-line bg-surface pl-10 pr-3 text-sm text-ink focus-visible:ring-2 focus-visible:ring-focus" />
+            <input
+              id="activity-search"
+              data-search-input
+              value={filters.search ?? ""}
+              onChange={(event) => void apply({ ...filters, search: event.target.value })}
+              placeholder="Search activity"
+              className="min-h-11 w-full rounded-xl border border-line bg-surface pl-10 pr-3 text-sm text-ink focus-visible:border-focus focus-visible:ring-2 focus-visible:ring-focus/40"
+            />
           </div>
-          <Select aria-label="Transaction type" value={type} onChange={(event) => applyFilter(setType, event.target.value)} options={[{ value: "ALL", label: "All types" }, { value: "EXPENSE", label: "Expenses" }, { value: "INCOME", label: "Income" }, { value: "TRANSFER", label: "Transfers" }]} />
-          <Select aria-label="Account" value={accountId} onChange={(event) => applyFilter(setAccountId, event.target.value)} options={[{ value: "ALL", label: "All accounts" }, ...accounts.map((account) => ({ value: account.id, label: account.name }))]} />
-          <Select aria-label="Envelope" value={envelopeId} onChange={(event) => applyFilter(setEnvelopeId, event.target.value)} options={[{ value: "ALL", label: "All envelopes" }, ...envelopes.map((envelope) => ({ value: envelope.id, label: envelope.name }))]} />
+          <Button variant="outline" onClick={() => setFilterOpen(true)} aria-label="Filters">
+            <Filter className="h-4 w-4" aria-hidden="true" />
+            {activeFilters.length > 0 && <span className="ml-1">{activeFilters.length}</span>}
+          </Button>
         </div>
+        {activeFilters.length > 0 && (
+          <ChipRow className="mt-3">
+            {activeFilters.map((label) => (
+              <Chip key={label} size="sm" selected tone="brand">
+                {label}
+              </Chip>
+            ))}
+            <Chip size="sm" onClick={() => void apply({ search: filters.search })}>
+              Clear
+            </Chip>
+          </ChipRow>
+        )}
       </Card>
 
-      <Card className="p-0">
-        <div className="border-b border-line px-4 py-3 text-sm text-ink-muted">{filtered.length} transaction{filtered.length === 1 ? "" : "s"}</div>
-        <ul className="divide-y divide-line">
-          {visible.map((item) => (
-            <li key={item.id} className="flex items-center gap-3 p-4">
-              <div className="min-w-0 flex-1">
-                <p className="break-words font-semibold text-ink">{item.description}</p>
-                <p className="mt-1 text-sm text-ink-muted">
-                  {item.accountName} · {formatDate(item.date)}
-                  {item.envelopeName ? ` · ${item.envelopeName}` : ""}
-                </p>
-                {item.goalImpactName && <p className="mt-1 text-xs font-medium text-brand">Hypothetical impact tracked against {item.goalImpactName}</p>}
+      <p className="text-sm text-ink-muted">
+        {page.total >= 0 ? `${page.total} transaction${page.total === 1 ? "" : "s"}` : `${page.rows.length}+ transactions`}
+      </p>
+
+      {grouped.length ? (
+        <div className="space-y-6">
+          {grouped.map((group) => (
+            <section key={group.key}>
+              <div className="mb-2 flex items-baseline justify-between px-1">
+                <h2 className="text-sm font-semibold text-ink-secondary">{group.label}</h2>
+                <span className="tabular text-xs text-ink-muted">{group.total === 0 ? "Transfers" : formatCurrency(group.total)}</span>
               </div>
-              <span className={`whitespace-nowrap text-sm font-bold ${item.type === "INCOME" ? "text-positive" : "text-ink"}`}>
-                {item.type === "INCOME" ? "+" : item.type === "EXPENSE" ? "−" : ""}{formatCurrency(item.amount)}
-              </span>
-              <div className="flex">
-                {item.type !== "TRANSFER" && <button type="button" onClick={() => openEdit(item)} aria-label={`Edit ${item.description}`} className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-ink-muted hover:bg-surface-muted hover:text-brand"><Pencil className="h-4 w-4" aria-hidden="true" /></button>}
-                <button type="button" onClick={() => { setDeleting(item); setError(""); }} aria-label={`Delete ${item.description}`} className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-ink-muted hover:bg-red-50 hover:text-danger"><Trash2 className="h-4 w-4" aria-hidden="true" /></button>
-              </div>
-            </li>
+              <ul className="divide-y divide-line rounded-2xl border border-line bg-surface">
+                {group.rows.map((item) => (
+                  <li key={item.id}>
+                    <button
+                      type="button"
+                      onClick={() => setEditing(item)}
+                      className="flex w-full items-center gap-3 p-4 text-left"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-semibold text-ink">{item.description}</p>
+                        <p className="mt-0.5 text-sm text-ink-muted">
+                          {item.accountName}
+                          {item.transferToAccountName ? ` → ${item.transferToAccountName}` : ""}
+                          {item.envelopeName ? ` · ${item.envelopeName}` : ""}
+                        </p>
+                      </div>
+                      <Amount value={item.amount} type={item.type} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
           ))}
-          {!visible.length && <li className="p-10 text-center text-sm text-ink-muted">No activity matches these filters.</li>}
-        </ul>
-        {totalPages > 1 && <div className="flex items-center justify-between border-t border-line p-4"><Button variant="ghost" size="sm" disabled={page === 1} onClick={() => setPage((value) => value - 1)}>Previous</Button><span className="text-sm text-ink-muted">Page {page} of {totalPages}</span><Button variant="ghost" size="sm" disabled={page === totalPages} onClick={() => setPage((value) => value + 1)}>Next</Button></div>}
-      </Card>
+        </div>
+      ) : (
+        <EmptyState title="No activity matches these filters." />
+      )}
 
-      <Modal isOpen={Boolean(editing)} onClose={() => setEditing(null)} title="Edit transaction">
-        <form onSubmit={saveEdit} className="space-y-4">
-          {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-danger">{error}</p>}
-          <Input label="Description" value={editDescription} onChange={(event) => setEditDescription(event.target.value)} required />
-          <Input label="Amount" type="number" inputMode="decimal" min="0.01" step="0.01" value={editAmount} onChange={(event) => setEditAmount(event.target.value)} required />
-          <Input label="Date" type="date" value={editDate} onChange={(event) => setEditDate(event.target.value)} required />
-          {editing?.type === "EXPENSE" && <>
-            <Select label="Spending envelope" value={editEnvelopeId} onChange={(event) => setEditEnvelopeId(event.target.value)} options={[{ value: "", label: "Uncategorized" }, ...envelopes.filter((envelope) => envelope.accountId === editing.accountId && envelope.kind !== "GOAL").map((envelope) => ({ value: envelope.id, label: envelope.name }))]} />
-            <Select label="Goal impact" value={editGoalId} onChange={(event) => setEditGoalId(event.target.value)} options={[{ value: "", label: "Do not include" }, ...envelopes.filter((envelope) => envelope.kind === "GOAL").map((envelope) => ({ value: envelope.id, label: envelope.name }))]} />
-          </>}
-          <Button type="submit" className="w-full" isLoading={loading}>Save changes</Button>
-        </form>
-      </Modal>
+      {page.nextCursor && (
+        <Button variant="outline" className="w-full" isLoading={loading} onClick={() => void apply(filters, page.nextCursor)}>
+          Load more
+        </Button>
+      )}
 
-      <Modal isOpen={Boolean(deleting)} onClose={() => setDeleting(null)} title="Delete transaction?">
-        <p className="text-sm text-ink-secondary">This reverses the related account and envelope balances. This action cannot be undone.</p>
-        {error && <p role="alert" className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-danger">{error}</p>}
-        <div className="mt-5 flex justify-end gap-3"><Button variant="ghost" onClick={() => setDeleting(null)}>Cancel</Button><Button variant="destructive" onClick={confirmDelete} isLoading={loading}>Delete</Button></div>
-      </Modal>
+      <Sheet
+        open={filterOpen}
+        onClose={() => setFilterOpen(false)}
+        title="Filters"
+        footer={
+          <Button className="w-full" onClick={() => setFilterOpen(false)}>
+            Done
+          </Button>
+        }
+      >
+        <div className="space-y-4">
+          <Select
+            label="Type"
+            value={filters.type ?? "ALL"}
+            onChange={(event) => void apply({ ...filters, type: event.target.value as TransactionKind | "ALL" })}
+            options={[
+              { value: "ALL", label: "All types" },
+              { value: "EXPENSE", label: "Expenses" },
+              { value: "INCOME", label: "Income" },
+              { value: "TRANSFER", label: "Transfers" },
+              { value: "ADJUSTMENT", label: "Adjustments" },
+            ]}
+          />
+          <Select
+            label="Account"
+            value={filters.accountId ?? "ALL"}
+            onChange={(event) => void apply({ ...filters, accountId: event.target.value })}
+            options={[{ value: "ALL", label: "All accounts" }, ...snapshot.accounts.map((account) => ({ value: account.id, label: account.name }))]}
+          />
+          <Select
+            label="Envelope"
+            value={filters.envelopeId ?? "ALL"}
+            onChange={(event) => void apply({ ...filters, envelopeId: event.target.value })}
+            options={[
+              { value: "ALL", label: "All envelopes" },
+              { value: "NONE", label: "Uncategorized" },
+              ...snapshot.envelopes.map((envelope) => ({ value: envelope.id, label: envelope.name })),
+            ]}
+          />
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="From" type="date" value={filters.from ?? ""} onChange={(event) => void apply({ ...filters, from: event.target.value || undefined })} />
+            <Input label="To" type="date" value={filters.to ?? ""} onChange={(event) => void apply({ ...filters, to: event.target.value || undefined })} />
+          </div>
+        </div>
+      </Sheet>
+
+      <TransactionSheet
+        item={editing}
+        onClose={() => setEditing(null)}
+        onDelete={() => {
+          if (editing) setDeleting(editing);
+          setEditing(null);
+        }}
+        onDuplicate={(item) => {
+          setEditing(null);
+          openAdd(item.type === "INCOME" ? "income" : item.type === "TRANSFER" ? "transfer" : "expense", {
+            amount: item.amount,
+            description: item.description,
+            notes: item.notes,
+            accountId: item.accountId,
+            toAccountId: item.transferToAccountId ?? undefined,
+            envelopeId: item.envelopeId,
+            goalImpactEnvelopeId: item.goalImpactEnvelopeId,
+          });
+        }}
+      />
+
+      <Sheet open={Boolean(deleting)} onClose={() => setDeleting(null)} title="Delete transaction?">
+        <p className="text-sm text-ink-secondary">This reverses the related account and envelope balances.</p>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => setDeleting(null)}>Cancel</Button>
+          <Button
+            variant="destructive"
+            onClick={async () => {
+              if (!deleting) return;
+              const result = await deleteTransactionAction(deleting.id);
+              if (!result.ok) return toast.show({ title: result.error, variant: "error" });
+              const payload = result.data;
+              toast.show({
+                title: "Transaction deleted",
+                variant: "success",
+                action: {
+                  label: "Undo",
+                  onClick: async () => {
+                    const undo = await restoreTransactionAction(payload);
+                    if (!undo.ok) toast.show({ title: undo.error, variant: "error" });
+                  },
+                },
+              });
+              setDeleting(null);
+              void apply(filters);
+            }}
+          >
+            Delete
+          </Button>
+        </div>
+      </Sheet>
     </div>
+  );
+}
+
+function TransactionSheet({
+  item,
+  onClose,
+  onDelete,
+  onDuplicate,
+}: {
+  item: TransactionRow | null;
+  onClose: () => void;
+  onDelete: () => void;
+  onDuplicate: (item: TransactionRow) => void;
+}) {
+  const snapshot = useSnapshot();
+  const toast = useToast();
+  const router = useRouter();
+  const [description, setDescription] = useState("");
+  const [amount, setAmount] = useState("");
+  const [date, setDate] = useState("");
+  const [notes, setNotes] = useState("");
+  const [envelopeId, setEnvelopeId] = useState("");
+  const [goalId, setGoalId] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!item) return;
+    setDescription(item.description);
+    setAmount(String(item.amount));
+    setDate(isoDateKey(item.date));
+    setNotes(item.notes ?? "");
+    setEnvelopeId(item.envelopeId ?? "");
+    setGoalId(item.goalImpactEnvelopeId ?? "");
+  }, [item]);
+
+  const editable = item && item.type !== "TRANSFER" && item.type !== "ADJUSTMENT";
+
+  const save = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!item || !editable) return;
+    setSaving(true);
+    const result = await updateTransactionAction({
+      id: item.id,
+      description,
+      amount: parseMoney(amount),
+      date,
+      notes: notes || null,
+      envelopeId: envelopeId || null,
+      goalImpactEnvelopeId: goalId || null,
+    });
+    setSaving(false);
+    if (!result.ok) return toast.show({ title: result.error, variant: "error" });
+    toast.show({ title: "Transaction updated", variant: "success" });
+    onClose();
+    router.refresh();
+  };
+
+  return (
+    <Sheet open={Boolean(item)} onClose={onClose} title={item?.description ?? "Transaction"} description={item ? `${item.accountName} · ${formatMonthDay(item.date)}` : undefined}>
+      {item && (
+        <form onSubmit={save} className="space-y-4">
+          <p className="text-3xl font-bold tabular text-ink">
+            <Amount value={item.amount} type={item.type} className="text-3xl" />
+          </p>
+          {editable ? (
+            <>
+              <Input label="Description" value={description} onChange={(event) => setDescription(event.target.value)} required />
+              <MoneyInput label="Amount" value={amount} onValueChange={setAmount} />
+              <Input label="Date" type="date" value={date} onChange={(event) => setDate(event.target.value)} required />
+              {item.type === "EXPENSE" && (
+                <>
+                  <Select
+                    label="Spending envelope"
+                    value={envelopeId}
+                    onChange={(event) => setEnvelopeId(event.target.value)}
+                    options={[
+                      { value: "", label: "Uncategorized" },
+                      ...snapshot.envelopes
+                        .filter((envelope) => envelope.accountId === item.accountId && envelope.kind !== "GOAL")
+                        .map((envelope) => ({ value: envelope.id, label: `${envelope.name} · ${formatCurrency(envelope.balance)}` })),
+                    ]}
+                  />
+                  <Select
+                    label="Goal impact"
+                    value={goalId}
+                    onChange={(event) => setGoalId(event.target.value)}
+                    options={[
+                      { value: "", label: "Do not include" },
+                      ...snapshot.envelopes.filter((envelope) => envelope.kind === "GOAL").map((envelope) => ({ value: envelope.id, label: envelope.name })),
+                    ]}
+                  />
+                </>
+              )}
+              <Textarea label="Notes" value={notes} onChange={(event) => setNotes(event.target.value)} rows={2} />
+              <Button type="submit" className="w-full" isLoading={saving}>Save changes</Button>
+            </>
+          ) : (
+            <p className="text-sm text-ink-muted">Transfers and adjustments cannot be edited. Delete and recreate them instead.</p>
+          )}
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" className="flex-1" onClick={() => onDuplicate(item)}>
+              Duplicate
+            </Button>
+            <Button type="button" variant="destructive" className="flex-1" onClick={onDelete}>
+              <Trash2 className="h-4 w-4" aria-hidden="true" /> Delete
+            </Button>
+          </div>
+        </form>
+      )}
+    </Sheet>
   );
 }

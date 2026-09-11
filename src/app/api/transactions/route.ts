@@ -1,6 +1,4 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
-import { prisma } from "@/lib/prisma";
 import { validateRequest } from "@/lib/auth";
 import { errorResponse } from "@/lib/errors";
 import {
@@ -8,78 +6,59 @@ import {
   deleteLedgerTransaction,
   updateLedgerTransaction,
 } from "@/lib/services/ledger";
+import { listTransactions } from "@/lib/data/transactions";
+import {
+  createTransactionSchema,
+  ledgerDate,
+  updateTransactionSchema,
+} from "@/lib/validation";
+import type { TransactionKind } from "@/lib/data/types";
 
-const createTransactionSchema = z.object({
-  amount: z.number().positive("Amount must be positive"),
-  description: z.string().min(1, "Description is required"),
-  type: z.enum(["INCOME", "EXPENSE"]),
-  accountId: z.string(),
-  date: z.string().optional(),
-  envelopeId: z.string().nullable().optional(),
-  goalImpactEnvelopeId: z.string().nullable().optional(),
-});
-
-const updateTransactionSchema = createTransactionSchema
-  .omit({ accountId: true, type: true })
-  .extend({ id: z.string() });
-
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const { user } = await validateRequest();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const transactions = await prisma.transaction.findMany({
-      where: {
-        account: { userId: user.id },
+    const params = new URL(request.url).searchParams;
+    const page = await listTransactions(
+      user.id,
+      {
+        search: params.get("search") || undefined,
+        type: (params.get("type") as TransactionKind | "ALL" | null) || undefined,
+        accountId: params.get("accountId") || undefined,
+        envelopeId: params.get("envelopeId") || undefined,
+        from: params.get("from") || undefined,
+        to: params.get("to") || undefined,
       },
-      orderBy: { date: "desc" },
-      include: {
-        account: {
-          select: { name: true },
-        },
-      },
-    });
-
-    return NextResponse.json(transactions);
-  } catch (error) {
-    console.error("Get transactions error:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch transactions" },
-      { status: 500 }
+      params.get("cursor"),
     );
+    return NextResponse.json(page);
+  } catch (error) {
+    const response = errorResponse(error);
+    return NextResponse.json(response.body, { status: response.status });
   }
 }
 
 export async function POST(request: Request) {
   try {
     const { user } = await validateRequest();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const body = await request.json();
-    const result = createTransactionSchema.safeParse(body);
-
+    const result = createTransactionSchema.safeParse(await request.json());
     if (!result.success) {
-      return NextResponse.json(
-        { error: result.error.errors[0].message },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: result.error.errors[0].message }, { status: 400 });
     }
 
-    const { amount, description, type, accountId, date, envelopeId, goalImpactEnvelopeId } =
+    const { amount, description, notes, type, accountId, date, envelopeId, goalImpactEnvelopeId } =
       result.data;
     const transaction = await createLedgerTransaction({
       actorId: user.id,
       amount,
       description,
+      notes,
       type,
       accountId,
-      date: date ? new Date(`${date}T12:00:00`) : undefined,
+      date: ledgerDate(date),
       envelopeId,
       goalImpactEnvelopeId,
     });
@@ -94,21 +73,15 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   try {
     const { user } = await validateRequest();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { searchParams } = new URL(request.url);
-    const transactionId = searchParams.get("id");
-
+    const transactionId = new URL(request.url).searchParams.get("id");
     if (!transactionId) {
       return NextResponse.json({ error: "Transaction ID required" }, { status: 400 });
     }
 
-    await deleteLedgerTransaction(user.id, transactionId);
-
-    return NextResponse.json({ success: true });
+    const deleted = await deleteLedgerTransaction(user.id, transactionId);
+    return NextResponse.json({ success: true, deleted });
   } catch (error) {
     const response = errorResponse(error);
     return NextResponse.json(response.body, { status: response.status });
@@ -125,7 +98,8 @@ export async function PATCH(request: Request) {
       transactionId: input.id,
       amount: input.amount,
       description: input.description,
-      date: input.date ? new Date(`${input.date}T12:00:00`) : new Date(),
+      notes: input.notes,
+      date: ledgerDate(input.date),
       envelopeId: input.envelopeId,
       goalImpactEnvelopeId: input.goalImpactEnvelopeId,
     });

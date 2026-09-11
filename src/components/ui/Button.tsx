@@ -4,46 +4,63 @@ import { forwardRef, type ButtonHTMLAttributes } from "react";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+export type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "destructive" | "soft";
+export type ButtonSize = "sm" | "md" | "lg";
+
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: "primary" | "secondary" | "outline" | "ghost" | "destructive";
-  size?: "sm" | "md" | "lg";
+  variant?: ButtonVariant;
+  size?: ButtonSize;
   isLoading?: boolean;
+  loadingLabel?: string;
 }
 
-const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant = "primary", size = "md", isLoading, children, disabled, ...props }, ref) => {
-    const baseStyles = "inline-flex min-h-11 items-center justify-center rounded-xl font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50";
-    
-    const variants = {
-      primary: "bg-sage-600 text-white hover:bg-sage-700 focus:ring-sage-500 shadow-lg shadow-sage-600/25 hover:shadow-sage-600/40 hover:-translate-y-0.5",
-      secondary: "bg-cream-200 text-sage-800 hover:bg-cream-300 focus:ring-cream-400",
-      outline: "border-2 border-sage-300 text-sage-700 hover:bg-sage-50 focus:ring-sage-400",
-      ghost: "text-sage-600 hover:bg-sage-100 focus:ring-sage-400",
-      destructive: "bg-red-500 text-white hover:bg-red-600 focus:ring-red-400 shadow-lg shadow-red-500/25",
-    };
-    
-    const sizes = {
-      sm: "px-3 py-1.5 text-sm gap-1.5",
-      md: "px-4 py-2.5 text-sm gap-2",
-      lg: "px-6 py-3 text-base gap-2",
-    };
+export const buttonVariants: Record<ButtonVariant, string> = {
+  primary:
+    "bg-brand text-brand-contrast shadow-card hover:bg-brand-strong active:bg-brand-strong",
+  secondary:
+    "bg-brand-soft text-brand-strong hover:bg-brand-soft/70 active:bg-brand-soft/60",
+  outline:
+    "border border-line-strong bg-surface text-ink hover:bg-surface-muted active:bg-surface-muted",
+  ghost: "text-ink-secondary hover:bg-surface-muted hover:text-ink active:bg-surface-muted",
+  soft: "bg-surface-muted text-ink hover:bg-line active:bg-line",
+  destructive:
+    "bg-danger text-ink-inverse shadow-card hover:brightness-95 active:brightness-90",
+};
 
+export const buttonSizes: Record<ButtonSize, string> = {
+  sm: "min-h-9 px-3 text-sm gap-1.5 rounded-lg",
+  md: "min-h-11 px-4 text-sm gap-2 rounded-xl",
+  lg: "min-h-12 px-6 text-base gap-2 rounded-xl",
+};
+
+const Button = forwardRef<HTMLButtonElement, ButtonProps>(
+  (
+    { className, variant = "primary", size = "md", isLoading, loadingLabel, children, disabled, type = "button", ...props },
+    ref,
+  ) => {
     return (
       <button
         ref={ref}
-        className={cn(baseStyles, variants[variant], sizes[size], className)}
+        type={type}
+        className={cn(
+          "inline-flex select-none items-center justify-center whitespace-nowrap font-semibold transition-[background-color,box-shadow,transform] duration-instant",
+          "focus:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+          "active:translate-y-px disabled:pointer-events-none disabled:opacity-50",
+          buttonVariants[variant],
+          buttonSizes[size],
+          className,
+        )}
         disabled={disabled || isLoading}
         aria-busy={isLoading || undefined}
         {...props}
       >
-        {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
-        {children}
+        {isLoading && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+        {isLoading && loadingLabel ? loadingLabel : children}
       </button>
     );
-  }
+  },
 );
 
 Button.displayName = "Button";
 
 export { Button };
-

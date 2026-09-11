@@ -4,6 +4,8 @@ import {
   createLedgerTransaction,
   createLedgerTransfer,
   deleteLedgerTransaction,
+  reconcileLedgerAccount,
+  restoreLedgerTransaction,
 } from "@/lib/services/ledger";
 
 describe("ledger integration", () => {
@@ -114,5 +116,20 @@ describe("ledger integration", () => {
     ]);
     expect(Number(source.balance)).toBe(1000);
     expect(Number(destination.balance)).toBe(100);
+  });
+
+  it("reconciles with an ADJUSTMENT and restores after undo", async () => {
+    const reconciled = await reconcileLedgerAccount(ownerId, accountId, 940);
+    expect(reconciled.difference).toBe(-60);
+    expect(Number((await prisma.account.findUniqueOrThrow({ where: { id: accountId } })).balance)).toBe(940);
+
+    const payload = await deleteLedgerTransaction(ownerId, reconciled.transaction!.id);
+    expect(Number((await prisma.account.findUniqueOrThrow({ where: { id: accountId } })).balance)).toBe(1000);
+
+    const restored = await restoreLedgerTransaction(ownerId, payload);
+    expect(Number((await prisma.account.findUniqueOrThrow({ where: { id: accountId } })).balance)).toBe(940);
+
+    await deleteLedgerTransaction(ownerId, restored.transaction.id);
+    expect(Number((await prisma.account.findUniqueOrThrow({ where: { id: accountId } })).balance)).toBe(1000);
   });
 });

@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { validateRequest } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { errorResponse, AppError } from "@/lib/errors";
+import { errorResponse } from "@/lib/errors";
 import { requireAccountAccess } from "@/lib/authorization";
 import { calculateAllocations } from "@/lib/services/allocation";
+import { saveAllocationPlan } from "@/lib/services/plans";
 
 export const dynamic = "force-dynamic";
 
@@ -76,51 +77,7 @@ export async function PUT(request: Request) {
     const { user } = await validateRequest();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const input = savePlanSchema.parse(await request.json());
-    const access = await requireAccountAccess(user.id, input.accountId, "EDIT");
-
-    if (new Set(input.rules.map((rule) => rule.envelopeId)).size !== input.rules.length) {
-      throw new AppError("Each envelope can appear only once", 400, "DUPLICATE_ENVELOPE");
-    }
-    if (input.rules.filter((rule) => rule.method === "REMAINDER").length > 1) {
-      throw new AppError("Only one remainder rule is allowed", 400, "DUPLICATE_REMAINDER");
-    }
-
-    const envelopes = await prisma.envelope.findMany({
-      where: { id: { in: input.rules.map((rule) => rule.envelopeId) } },
-      select: { id: true, userId: true, accountId: true, archivedAt: true },
-    });
-    if (
-      envelopes.length !== input.rules.length ||
-      envelopes.some(
-        (envelope) =>
-          envelope.userId !== access.ownerId ||
-          envelope.accountId !== input.accountId ||
-          envelope.archivedAt,
-      )
-    ) {
-      throw new AppError("Every rule must use an active envelope from this account", 400, "INVALID_RULE");
-    }
-
-    const plan = await prisma.$transaction(async (tx) => {
-      const saved = await tx.allocationPlan.upsert({
-        where: { userId_accountId: { userId: access.ownerId, accountId: input.accountId } },
-        create: {
-          userId: access.ownerId,
-          accountId: input.accountId,
-          name: input.name,
-          enabled: input.enabled,
-        },
-        update: { name: input.name, enabled: input.enabled },
-      });
-      await tx.allocationRule.deleteMany({ where: { planId: saved.id } });
-      if (input.rules.length) {
-        await tx.allocationRule.createMany({
-          data: input.rules.map((rule) => ({ ...rule, planId: saved.id })),
-        });
-      }
-      return saved;
-    });
-
+    const plan = await saveAllocationPlan({ actorId: user.id, ...input });
     return NextResponse.json(plan);
   } catch (error) {
     const response = errorResponse(error);

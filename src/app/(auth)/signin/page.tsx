@@ -44,7 +44,7 @@ export default function SignInPage() {
   };
 
   return (
-    <Card variant="glass" className="w-full max-w-md animate-fade-in">
+    <Card padding="lg" className="w-full max-w-md animate-fade-in">
       <CardHeader>
         <CardTitle className="text-2xl text-center font-display">Welcome back</CardTitle>
         <CardDescription className="text-center">
@@ -54,7 +54,7 @@ export default function SignInPage() {
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">
+            <div role="alert" className="rounded-xl border border-danger/30 bg-danger-soft p-3 text-sm font-medium text-danger">
               {error}
             </div>
           )}
@@ -83,9 +83,9 @@ export default function SignInPage() {
           </Button>
         </form>
         
-        <p className="mt-6 text-center text-sm text-sage-600">
+        <p className="mt-6 text-center text-sm text-ink-muted">
           Don&apos;t have an account?{" "}
-          <Link href="/signup" className="font-medium text-sage-700 hover:text-sage-800 underline underline-offset-4">
+          <Link href="/signup" className="font-medium text-brand-strong hover:text-ink underline underline-offset-4">
             Sign up
           </Link>
         </p>

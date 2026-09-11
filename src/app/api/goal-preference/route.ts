@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { validateRequest } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { errorResponse, AppError } from "@/lib/errors";
-import { requireEnvelopeAccess } from "@/lib/authorization";
+import { errorResponse } from "@/lib/errors";
+import { setFocusGoal } from "@/lib/services/envelopes";
 
 export async function GET() {
   const { user } = await validateRequest();
@@ -20,17 +20,9 @@ export async function PUT(request: Request) {
     const { user } = await validateRequest();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     const { goalEnvelopeId } = z
-      .object({ goalEnvelopeId: z.string() })
+      .object({ goalEnvelopeId: z.string().nullable() })
       .parse(await request.json());
-    const { envelope } = await requireEnvelopeAccess(user.id, goalEnvelopeId);
-    if (envelope.kind !== "GOAL") {
-      throw new AppError("Focus goal must be a goal envelope", 400, "INVALID_GOAL");
-    }
-    const preference = await prisma.goalPreference.upsert({
-      where: { userId: user.id },
-      create: { userId: user.id, goalEnvelopeId },
-      update: { goalEnvelopeId },
-    });
+    const preference = await setFocusGoal(user.id, goalEnvelopeId);
     return NextResponse.json(preference);
   } catch (error) {
     const response = errorResponse(error);

@@ -93,9 +93,9 @@ export default async function HomePage() {
             <div className="relative mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
               <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-end">
                 <div>
-                  <p className="text-sm font-semibold uppercase tracking-[0.18em] text-sage-200">This month</p>
+                  <p className="text-sm font-semibold uppercase tracking-[0.18em] text-white/70">This month</p>
                   <p className="mt-3 font-display text-4xl font-bold sm:text-5xl">$420 ready to assign</p>
-                  <p className="mt-3 max-w-md text-sage-100">
+                  <p className="mt-3 max-w-md text-white/85">
                     Paycheck landed. Groceries, car care, and New Phone already funded from your plan.
                   </p>
                 </div>
@@ -107,19 +107,19 @@ export default async function HomePage() {
                       { label: "New phone", value: "62%", detail: "Goal funded" },
                     ].map((item) => (
                       <div key={item.label} className="rounded-2xl bg-white/10 px-4 py-4 backdrop-blur">
-                        <p className="text-sm text-sage-100">{item.label}</p>
+                        <p className="text-sm text-white/85">{item.label}</p>
                         <p className="mt-2 text-2xl font-bold">{item.value}</p>
-                        <p className="mt-1 text-xs text-sage-200">{item.detail}</p>
+                        <p className="mt-1 text-xs text-white/70">{item.detail}</p>
                       </div>
                     ))}
                   </div>
                   <div className="rounded-2xl bg-white/10 px-4 py-4 backdrop-blur">
                     <div className="flex items-center justify-between gap-3 text-sm">
                       <span className="font-semibold">New phone progress</span>
-                      <span className="text-sage-100">$620 / $1,000</span>
+                      <span className="text-white/85">$620 / $1,000</span>
                     </div>
                     <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/15">
-                      <div className="h-full w-[62%] rounded-full bg-cream-200" />
+                      <div className="h-full w-[62%] rounded-full bg-white/80" />
                     </div>
                   </div>
                 </div>
@@ -169,7 +169,7 @@ export default async function HomePage() {
                 },
               ].map((item) => (
                 <li key={item.step}>
-                  <p className="font-display text-4xl font-bold text-brand/30">{item.step}</p>
+                  <p className="font-display text-4xl font-bold text-brand" aria-hidden="true">{item.step}</p>
                   <h3 className="mt-3 text-xl font-bold text-ink">{item.title}</h3>
                   <p className="mt-3 text-ink-secondary">{item.body}</p>
                 </li>
@@ -219,21 +219,21 @@ export default async function HomePage() {
         </section>
 
         <section className="relative overflow-hidden py-20 sm:py-24">
-          <div className="absolute inset-0 bg-gradient-to-br from-sage-900 via-sage-800 to-sage-950" />
+          <div className="absolute inset-0 bg-gradient-to-br from-surface-inverse via-surface-inverse to-surface-inverse" />
           <div className="absolute inset-0 bg-[linear-gradient(to_right,#fff1_1px,transparent_1px),linear-gradient(to_bottom,#fff1_1px,transparent_1px)] bg-[size:3rem_3rem]" />
-          <div className="absolute left-1/4 top-16 h-64 w-64 rounded-full bg-sage-400/20 blur-3xl" />
-          <div className="absolute bottom-10 right-1/4 h-80 w-80 rounded-full bg-cream-400/10 blur-3xl" />
+          <div className="absolute left-1/4 top-16 h-64 w-64 rounded-full bg-brand/25 blur-3xl" />
+          <div className="absolute bottom-10 right-1/4 h-80 w-80 rounded-full bg-warning/10 blur-3xl" />
 
           <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="mx-auto max-w-2xl text-center">
-              <p className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.18em] text-cream-200">
+              <p className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.18em] text-white/80">
                 <Sparkles className="h-4 w-4" aria-hidden="true" />
                 AI-powered gardener
               </p>
               <h2 className="mt-4 font-display text-3xl font-bold text-white sm:text-4xl">
                 Meet Bud, your personal gardener
               </h2>
-              <p className="mt-4 text-lg text-sage-200">
+              <p className="mt-4 text-lg text-white/70">
                 Tell Bud what happened in plain English. Your friendly gardener logs transactions, helps manage
                 accounts, and answers questions about your plan.
               </p>
@@ -253,15 +253,15 @@ export default async function HomePage() {
                     alt=""
                     width={40}
                     height={40}
-                    className="h-10 w-10 flex-none rounded-full bg-cream-100"
+                    className="h-10 w-10 flex-none rounded-full bg-surface"
                   />
                   <div className="max-w-[85%] rounded-2xl rounded-tl-md bg-white/20 px-4 py-3 text-sm text-white">
                     Done! Planted $47.50 in Groceries. You still have $332.50 available there this month.
                   </div>
                 </div>
               </div>
-              <p className="mt-5 flex items-center gap-2 text-sm text-sage-200">
-                <Zap className="h-4 w-4 text-cream-300" aria-hidden="true" />
+              <p className="mt-5 flex items-center gap-2 text-sm text-white/70">
+                <Zap className="h-4 w-4 text-warning" aria-hidden="true" />
                 Transaction added · Envelope updated · Dashboard refreshed
               </p>
             </div>
@@ -285,11 +285,11 @@ export default async function HomePage() {
                 },
               ].map((item) => (
                 <div key={item.title} className="rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur">
-                  <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10 text-cream-200">
+                  <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10 text-white/80">
                     <item.icon className="h-5 w-5" aria-hidden="true" />
                   </span>
                   <h3 className="mt-4 text-lg font-semibold text-white">{item.title}</h3>
-                  <p className="mt-2 text-sm text-sage-300">{item.body}</p>
+                  <p className="mt-2 text-sm text-white/60">{item.body}</p>
                 </div>
               ))}
             </div>

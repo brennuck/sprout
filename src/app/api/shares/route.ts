@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateRequest } from "@/lib/auth";
+import { invalidateOwner } from "@/lib/cache";
 
 // DELETE - Revoke a share (either as owner or as viewer leaving)
 export async function DELETE(request: Request) {
@@ -37,6 +38,8 @@ export async function DELETE(request: Request) {
       where: { id: shareId },
     });
 
+    invalidateOwner(share.ownerId);
+    invalidateOwner(share.viewerId);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Delete share error:", error);

@@ -1,212 +1,90 @@
-# 🌱 Sprout
+# Sprout
 
-A beautiful budgeting app that helps you grow your finances. Built with Next.js 14, Prisma, Lucia Auth, and AI-powered assistance.
+Envelope budgeting for real cash: monthly budgets, sinking funds, goals, paycheck plans, bills, and reports. Built with Next.js 14, Prisma, Lucia Auth, and Bud, an AI assistant.
 
 ## Features
 
-- 🤖 **AI-Powered Assistant** - Meet Bud, your personal gardener! Chat naturally to add transactions, create accounts, transfer funds, and more
-- 🔐 **Secure Authentication** - Sign up and sign in with Lucia session-based auth
-- 💰 **Money Plan** - Organize real account balances into monthly budgets, sinking funds, and goals
-- 🗓️ **Automatic Contributions** - Add a fixed amount to sinking funds or goals weekly or monthly, with safe retries when money is not ready to assign
-- 💵 **Income Plans** - Automatically distribute recorded income with fixed, percentage, and remainder rules
-- 🎯 **Goal Motivation** - See actual goal progress and the hypothetical opportunity cost of spending
-- 📊 **Reports** - Explore cash flow, spending, allocation, net worth, and goal-impact charts
-- 📱 **iPhone-First PWA** - Installable shell with safe-area navigation and touch-friendly workflows
-- 🔄 **Easy Transfers** - Move money between accounts with one click
-- 👥 **Dashboard Sharing** - Invite family or partners to view and collaborate on your finances
-- ⚡ **Quick Actions** - Add transactions, transfers, and accounts from a convenient modal interface
-- 🎨 **Beautiful UI** - Modern, clean design with a soothing earthy color palette
+- **Plan** — Month navigator, envelope rows, quick assign, reorder, archive/restore
+- **Fast entry** — Global Add sheet for expense, income, and transfers, with payee memory and Undo
+- **Income plans** — Fixed, percent, and remainder rules that run when a paycheck is recorded
+- **Bills** — Weekly / biweekly / monthly / yearly schedules, mark paid, skip, optional auto-post
+- **Reports** — SVG charts for spending, cash flow, net worth, and hypothetical goal impact
+- **Bud** — Streaming chat with envelope-aware tools; destructive actions ask for confirmation
+- **Sharing** — Invite a partner to view or edit the same dashboard
+- **PWA** — Installable, PNG icons, service worker for `/_next/static`, dark mode without a flash
 
-## Meet Bud 🌿
+Tab bar on mobile: **Home · Plan · Add (+) · Activity · Reports**. Income lives on the Add sheet, a Payday card on Home, and the Plan header.
 
-Bud is your AI-powered personal gardener who helps tend to your financial garden. Just chat naturally:
+## Tech stack
 
-- *"Add a $50 grocery expense to my checking account"*
-- *"Transfer $200 from savings to my budget"*
-- *"Create a new vacation fund account with $500"*
-- *"Delete that coffee transaction from yesterday"*
+- Next.js 14.2 (App Router) and React 18.3
+- PostgreSQL with Prisma
+- Lucia session auth
+- OpenAI tools API (`OPENAI_MODEL`, default `gpt-4o-mini`)
+- Tailwind CSS with semantic tokens
+- Vitest, Playwright, axe-core
 
-Bud uses OpenAI GPT to understand your requests and performs actions directly on your accounts.
+## Getting started
 
-## Tech Stack
-
-- **Framework**: Next.js 14 (App Router)
-- **Database**: PostgreSQL with Prisma ORM
-- **Authentication**: Lucia Auth
-- **AI**: OpenAI GPT-4o-mini with function calling
-- **Styling**: Tailwind CSS
-- **Language**: TypeScript
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js 18+ 
-- PostgreSQL database (or use a service like Neon, Supabase, Railway)
-- OpenAI API key (for Bud AI features)
-
-### Installation
-
-1. Clone the repository and install dependencies:
-
-```bash
-npm install
-```
-
-2. Create a `.env` file in the root directory:
+1. `npm install`
+2. Create `.env`:
 
 ```env
 DATABASE_URL="postgresql://username:password@host:5432/database?sslmode=require"
 NEXT_PUBLIC_APP_URL="http://localhost:3000"
 OPENAI_API_KEY="sk-..."
+OPENAI_MODEL="gpt-4o-mini"
 CRON_SECRET="a-long-random-secret"
 ```
 
-3. Generate Prisma client and apply checked-in migrations:
+Neon: the Prisma URL helper appends `connect_timeout=15` when it is missing. Disabling scale-to-zero is the lasting fix for cold-start `P1001` errors.
+
+3. Generate the client and apply checked-in migrations (additive only):
 
 ```bash
 npm run db:generate
 npx prisma migrate deploy
 ```
 
-4. Start the development server:
+4. `npm run dev` and open [http://localhost:3000](http://localhost:3000).
 
-```bash
-npm run dev
-```
+Daily cron (`vercel.json`) hits `/api/cron/daily` for recurring envelope funding and auto-posted bills.
 
-5. Open [http://localhost:3000](http://localhost:3000) in your browser.
+## Money invariants
 
-## Database Schema
-
-### User
-- `id`: Unique identifier
-- `email`: User email (unique)
-- `hashedPassword`: bcrypt hashed password
-- `name`: Optional display name
-
-### Account
-- `id`: Unique identifier
-- `name`: Account name
-- `type`: SAVINGS | BUDGET | ALLOWANCE | RETIREMENT | STOCK
-- `balance`: Current balance (Decimal)
-- `userId`: Owner reference
-
-### Transaction
-- `id`: Unique identifier
-- `amount`: Transaction amount (Decimal)
-- `description`: Transaction description
-- `date`: Transaction date
-- `type`: INCOME | EXPENSE | TRANSFER
-- `accountId`: Associated account
-- `transferToAccountId`: Destination account (for transfers)
-- `goalImpactEnvelopeId`: Optional goal used only for hypothetical opportunity-cost reporting
-
-### Envelope
-- Linked to one real `Account`
-- `kind`: BUDGET | SINKING_FUND | GOAL
-- Optional target amount, monthly target, and target date
-- Sinking funds and goals can have one timezone-aware WEEKLY or MONTHLY recurring contribution
-- Available balance is the sum of signed `EnvelopeEntry` ledger rows
-
-### AllocationPlan
-- One optional plan per real account
-- Ordered FIXED, PERCENT, and REMAINDER rules
-- Runs atomically when income is recorded
-
-### Money invariants
-- Account balances represent real cash.
-- Envelope entries represent virtual assignments and must not create bank transfers.
-- Automatic sinking-fund contributions only use ready-to-assign cash; an underfunded contribution stays due and retries later.
-- Every scheduled occurrence has a unique key so retries cannot apply it twice.
-- Goal-impact spending is hypothetical and never changes funded goal progress.
-- Transaction, account, and envelope balance changes commit in one database transaction.
-
-### DashboardShare
-- `id`: Unique identifier
-- `ownerId`: Dashboard owner
-- `viewerId`: User with access
-- `permission`: VIEW | EDIT
-- `createdAt`: Share creation date
-
-### Invitation
-- `id`: Unique identifier
-- `ownerId`: Inviter
-- `recipientId`: Optional (if user exists)
-- `email`: Invitee email
-- `permission`: VIEW | EDIT
-- `status`: PENDING | ACCEPTED | DECLINED | EXPIRED
+- Account balances are real cash.
+- Envelope entries are virtual assignments and never move bank money.
+- Automatic sinking-fund contributions only use ready-to-assign cash; an underfunded occurrence stays due and retries.
+- Goal-impact spending is hypothetical and never changes funded progress.
+- Reconcile posts an `ADJUSTMENT` excluded from cash-flow reports.
+- Ledger writes commit in one database transaction and call `invalidateOwner` so RSC snapshots refresh.
 
 ## Scripts
 
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
-- `npm run start` - Start production server
-- `npm run typecheck` - Check TypeScript without emitting files
-- `npm test` - Run unit tests
-- `npm run test:integration` - Run atomic ledger and shared-permission tests against `TEST_DATABASE_URL`
-- `npm run test:e2e` - Run Playwright desktop and iPhone tests
-- `npm run db:generate` - Generate Prisma client
-- `npm run db:push` - Push schema to database
-- `npm run db:migrate` - Run migrations
-- `npm run db:studio` - Open Prisma Studio
+- `npm run dev` / `build` / `start`
+- `npm run typecheck`
+- `npm test` — unit tests (`budget-math`, bills, CSV, allocation, reports)
+- `npm run test:integration` — ledger + reconcile/undo against `TEST_DATABASE_URL`
+- `npm run test:e2e` — Playwright (set `E2E_FULL=1` for the authenticated journey)
+- `npm run db:generate` / `db:migrate` / `db:studio`
 
-## Project Structure
+## Project structure
 
 ```
 src/
-├── app/
-│   ├── (auth)/           # Auth pages (signin, signup)
-│   ├── (dashboard)/      # Home, budgets, income, reports, activity, settings
-│   ├── api/              # API routes
-│   │   ├── auth/         # Auth endpoints
-│   │   ├── accounts/     # Account CRUD
-│   │   ├── transactions/ # Atomic transaction CRUD
-│   │   ├── envelopes/    # Budget and goal envelopes
-│   │   ├── allocation-plans/ # Income distribution plans
-│   │   ├── reports/      # Read-only reporting aggregates
-│   │   ├── transfers/    # Transfer operations
-│   │   ├── invitations/  # Sharing invitations
-│   │   ├── shares/       # Dashboard shares
-│   │   └── chat/         # AI chat endpoint
-│   ├── globals.css       # Global styles
-│   ├── layout.tsx        # Root layout
-│   └── page.tsx          # Landing page
-├── components/
-│   ├── dashboard/        # Dashboard components
-│   │   ├── Bud.tsx       # AI assistant
-│   │   ├── QuickActions.tsx
-│   │   ├── ShareModal.tsx
-│   │   └── ...
-│   └── ui/               # Reusable UI components
-├── lib/
-│   ├── auth.ts           # Lucia auth configuration
-│   ├── password.ts       # Password hashing utilities
-│   ├── authorization.ts  # Owner and shared-dashboard permissions
-│   ├── services/         # Ledger, allocation, and reporting logic
-│   ├── prisma.ts         # Prisma client
-│   └── utils.ts          # Utility functions
-└── prisma/
-    ├── schema.prisma     # Database schema
-    └── migrations/       # Versioned production migrations
+├── app/(dashboard)/     # Home, Plan, Activity, Reports, Income, Bills, Settings
+├── app/api/chat/        # Bud streaming tools endpoint
+├── app/api/cron/daily/  # Recurring funding + auto-post bills
+├── components/add/      # Global Add sheet
+├── components/plan/     # PlanView, envelope sheets, quick assign
+├── components/shell/    # AppShell, snapshot provider, shortcuts
+├── components/charts/   # SVG bar / line / donut
+├── lib/actions/         # Server actions wrapping ledger services
+├── lib/data/            # Cached snapshot, month plan, transactions
+└── lib/services/        # Ledger, bills, payees, reports, CSV
 ```
 
-## Testing and migration safety
-
-Run the local verification suite before release:
-
-```bash
-npm run typecheck
-npm test
-TEST_DATABASE_URL="postgresql://..." npm run test:integration
-npm run lint
-npm run build
-npm run test:e2e
-```
-
-The authenticated Playwright journey requires a disposable migrated database and `E2E_FULL=1`. The default browser suite covers the public PWA shell, mobile viewport, accessibility scan, and protected-route behavior without changing financial data.
-
-Existing `BUDGET` and `ALLOWANCE` accounts are preserved. Users can explicitly convert them in Settings by selecting a destination cash account; conversion moves the current cash balance and creates a matching envelope atomically.
+Existing `BUDGET` and `ALLOWANCE` accounts can be converted in Settings onto a cash account; conversion moves the cash and creates a matching envelope atomically.
 
 ## Author
 

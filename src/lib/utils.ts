@@ -22,3 +22,17 @@ export function formatDate(date: Date | string): string {
   }).format(d);
 }
 
+export function formatMonthDay(date: Date | string): string {
+  const d = typeof date === "string" ? new Date(date) : date;
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(d);
+}
+
+export function localDateKey(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+export function isoDateKey(date: Date | string) {
+  const d = typeof date === "string" ? new Date(date) : date;
+  return d.toISOString().slice(0, 10);
+}
+

@@ -1,63 +1,23 @@
 import type { AllocationRuleMethod, Prisma } from "@prisma/client";
 import { AppError } from "@/lib/errors";
 import { prisma } from "@/lib/prisma";
+import {
+  calculateAllocations as calculatePure,
+  type AllocationRuleInput,
+  type AllocationResult,
+} from "@/lib/allocation-math";
 
-export interface AllocationRuleInput {
-  envelopeId: string;
-  method: AllocationRuleMethod;
-  value: number;
-  priority: number;
-}
-
-export interface AllocationResult {
-  envelopeId: string;
-  amount: number;
-  method: AllocationRuleMethod;
-}
-
-const toCents = (value: number) => Math.round(value * 100);
-const fromCents = (value: number) => value / 100;
+export type { AllocationRuleInput, AllocationResult };
 
 export function calculateAllocations(amount: number, rules: AllocationRuleInput[]) {
-  if (!Number.isFinite(amount) || amount < 0) {
-    throw new AppError("Income amount must be positive", 400, "INVALID_AMOUNT", "amount");
-  }
-
-  const totalCents = toCents(amount);
-  let remainingCents = totalCents;
-  const allocations: AllocationResult[] = [];
-
-  for (const rule of [...rules].sort((a, b) => a.priority - b.priority)) {
-    if (remainingCents <= 0) break;
-
-    let allocationCents = 0;
-    if (rule.method === "FIXED") {
-      allocationCents = Math.min(remainingCents, Math.max(0, toCents(rule.value)));
-    } else if (rule.method === "PERCENT") {
-      const percentage = Math.min(100, Math.max(0, rule.value));
-      allocationCents = Math.min(
-        remainingCents,
-        Math.round(remainingCents * (percentage / 100)),
-      );
-    } else {
-      allocationCents = remainingCents;
+  try {
+    return calculatePure(amount, rules);
+  } catch (error) {
+    if (error instanceof RangeError) {
+      throw new AppError("Income amount must be positive", 400, "INVALID_AMOUNT", "amount");
     }
-
-    if (allocationCents > 0) {
-      allocations.push({
-        envelopeId: rule.envelopeId,
-        amount: fromCents(allocationCents),
-        method: rule.method,
-      });
-      remainingCents -= allocationCents;
-    }
+    throw error;
   }
-
-  return {
-    allocations,
-    allocated: fromCents(totalCents - remainingCents),
-    remainder: fromCents(remainingCents),
-  };
 }
 
 export async function getAllocationPreview(userId: string, accountId: string, amount: number) {
@@ -74,7 +34,7 @@ export async function getAllocationPreview(userId: string, accountId: string, am
     amount,
     plan.rules.map((rule) => ({
       envelopeId: rule.envelopeId,
-      method: rule.method,
+      method: rule.method as AllocationRuleMethod,
       value: Number(rule.value),
       priority: rule.priority,
     })),

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { validateRequest } from "@/lib/auth";
+import { invalidateOwner } from "@/lib/cache";
 
 const createInvitationSchema = z.object({
   email: z.string().email("Please enter a valid email"),
@@ -132,6 +133,7 @@ export async function POST(request: Request) {
       },
     });
 
+    invalidateOwner(existingUser?.id);
     return NextResponse.json(invitation);
   } catch (error) {
     console.error("Create invitation error:", error);
@@ -168,6 +170,7 @@ export async function DELETE(request: Request) {
       where: { id: invitationId },
     });
 
+    invalidateOwner(invitation.recipientId);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Delete invitation error:", error);

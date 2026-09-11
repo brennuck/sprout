@@ -1,28 +1,31 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { ArrowDown, BadgeDollarSign, Check, Plus, Save, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/Button";
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { BadgeDollarSign, GripVertical, Plus, Save, Trash2 } from "lucide-react";
 import { Card } from "@/components/ui/Card";
-import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
 import { Select } from "@/components/ui/Select";
+import { Input } from "@/components/ui/Input";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Amount } from "@/components/ui/Stat";
+import { useToast } from "@/components/ui/Toast";
+import { useSnapshot } from "@/components/shell/SnapshotProvider";
+import { useAddSheet } from "@/components/add/AddSheet";
+import { useLocalPreference } from "@/lib/hooks/useLocalPreference";
+import { savePlanAction } from "@/lib/actions/accounts";
+import { calculateAllocations } from "@/lib/allocation-math";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import type { BudgetAccount, BudgetEnvelope } from "@/components/dashboard/BudgetManager";
-
-interface Rule {
-  envelopeId: string;
-  method: "FIXED" | "PERCENT" | "REMAINDER";
-  value: number;
-  priority: number;
-}
-
-interface Plan {
-  accountId: string;
-  name: string;
-  enabled: boolean;
-  rules: Rule[];
-}
+import type { AllocationMethod, SnapshotRule } from "@/lib/data/types";
 
 interface IncomeItem {
   id: string;
@@ -32,248 +35,247 @@ interface IncomeItem {
   accountName: string;
 }
 
-interface IncomeManagerProps {
-  accounts: BudgetAccount[];
-  envelopes: BudgetEnvelope[];
-  plans: Plan[];
-  income: IncomeItem[];
-}
-
-function previewAllocations(amount: number, rules: Rule[]) {
-  let remaining = Math.max(0, Math.round(amount * 100));
-  return {
-    rows: [...rules]
-      .sort((a, b) => a.priority - b.priority)
-      .map((rule) => {
-        let cents = 0;
-        if (rule.method === "FIXED") cents = Math.min(remaining, Math.round(rule.value * 100));
-        if (rule.method === "PERCENT") cents = Math.round(remaining * (Math.min(100, rule.value) / 100));
-        if (rule.method === "REMAINDER") cents = remaining;
-        cents = Math.max(0, Math.min(remaining, cents));
-        remaining -= cents;
-        return { envelopeId: rule.envelopeId, amount: cents / 100 };
-      })
-      .filter((row) => row.amount > 0),
-    remainder: remaining / 100,
-  };
-}
-
-export function IncomeManager({ accounts, envelopes, plans, income }: IncomeManagerProps) {
-  const router = useRouter();
-  const [accountId, setAccountId] = useState(accounts[0]?.id || "");
-  const [amount, setAmount] = useState("");
-  const [description, setDescription] = useState("Paycheck");
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [rules, setRules] = useState<Rule[]>(
-    plans.find((plan) => plan.accountId === accounts[0]?.id)?.rules || [],
-  );
-  const [error, setError] = useState("");
+export function IncomeManager({ income }: { income: IncomeItem[] }) {
+  const snapshot = useSnapshot();
+  const toast = useToast();
+  const { openAdd } = useAddSheet();
+  const [accountId, setAccountId] = useLocalPreference("income-account", snapshot.accounts[0]?.id ?? "");
+  const plan = snapshot.plans.find((item) => item.accountId === accountId);
+  const [rules, setRules] = useState<SnapshotRule[]>(plan?.rules ?? []);
+  const [previewAmount, setPreviewAmount] = useState("1200");
   const [saving, setSaving] = useState(false);
-  const [result, setResult] = useState<{
-    transactionId: string;
-    allocations: { envelopeId: string; amount: number }[];
-    remainder: number;
-  } | null>(null);
 
-  const accountEnvelopes = envelopes.filter((envelope) => envelope.accountId === accountId);
+  const accountEnvelopes = snapshot.envelopes.filter((envelope) => envelope.accountId === accountId);
   const preview = useMemo(
-    () => previewAllocations(Number(amount || 0), rules),
-    [amount, rules],
+    () => calculateAllocations(Math.max(0, Number(previewAmount) || 0), rules),
+    [previewAmount, rules],
   );
 
-  const changeAccount = (nextAccountId: string) => {
-    setAccountId(nextAccountId);
-    setRules(plans.find((plan) => plan.accountId === nextAccountId)?.rules || []);
-    setResult(null);
+  const changeAccount = (next: string) => {
+    setAccountId(next);
+    setRules(snapshot.plans.find((item) => item.accountId === next)?.rules ?? []);
   };
 
-  const addRule = () => {
-    const available = accountEnvelopes.find(
-      (envelope) => !rules.some((rule) => rule.envelopeId === envelope.id),
-    );
-    if (!available) return;
-    setRules([
-      ...rules,
-      {
-        envelopeId: available.id,
-        method: "FIXED",
-        value: available.monthlyTarget || 0,
-        priority: rules.length,
-      },
-    ]);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const onDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setRules((current) => {
+      const oldIndex = current.findIndex((rule) => rule.envelopeId === active.id);
+      const newIndex = current.findIndex((rule) => rule.envelopeId === over.id);
+      return arrayMove(current, oldIndex, newIndex).map((rule, priority) => ({ ...rule, priority }));
+    });
   };
 
-  const updateRule = (index: number, patch: Partial<Rule>) => {
-    setRules(rules.map((rule, ruleIndex) => (ruleIndex === index ? { ...rule, ...patch } : rule)));
-  };
-
-  const savePlan = async () => {
+  const save = async () => {
     setSaving(true);
-    setError("");
-    try {
-      const response = await fetch("/api/allocation-plans", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          accountId,
-          name: "Paycheck plan",
-          enabled: true,
-          rules: rules.map((rule, priority) => ({ ...rule, priority })),
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Could not save your plan");
-      router.refresh();
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Could not save your plan");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const recordIncome = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setSaving(true);
-    setError("");
-    try {
-      const response = await fetch("/api/transactions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          accountId,
-          amount: Number(amount),
-          description,
-          date,
-          type: "INCOME",
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Could not record income");
-      setResult({
-        transactionId: data.transaction.id,
-        allocations: data.allocation?.allocations || [],
-        remainder: data.allocation?.remainder ?? Number(amount),
-      });
-      setAmount("");
-      router.refresh();
-    } catch (incomeError) {
-      setError(incomeError instanceof Error ? incomeError.message : "Could not record income");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const undo = async () => {
-    if (!result) return;
-    setSaving(true);
-    const response = await fetch(`/api/transactions?id=${result.transactionId}`, { method: "DELETE" });
-    if (response.ok) {
-      setResult(null);
-      router.refresh();
-    } else {
-      const data = await response.json();
-      setError(data.error || "Could not undo income");
-    }
+    const result = await savePlanAction({
+      accountId,
+      name: "Paycheck plan",
+      enabled: true,
+      rules: rules.map((rule, priority) => ({ ...rule, priority })),
+    });
     setSaving(false);
+    if (!result.ok) return toast.show({ title: result.error, variant: "error" });
+    toast.show({ title: "Paycheck plan saved", variant: "success" });
   };
 
-  if (!accounts.length) {
-    return <Card><p className="text-ink-muted">Create a cash account before recording income.</p></Card>;
+  if (!snapshot.accounts.length) {
+    return <EmptyState title="Create a cash account before recording income." />;
   }
 
   return (
     <div className="space-y-8">
-      <div>
-        <p className="text-sm font-semibold uppercase tracking-wide text-brand">Payday flow</p>
-        <h1 className="font-display text-3xl font-bold text-ink sm:text-4xl">Income</h1>
-        <p className="mt-2 max-w-2xl text-ink-secondary">Record money once. Sprout follows your plan and shows what is still ready to assign.</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-wide text-brand">Payday flow</p>
+          <h1 className="font-display text-3xl font-bold text-ink sm:text-4xl">Income</h1>
+          <p className="mt-2 max-w-2xl text-ink-secondary">Record money once. Sprout follows your plan and shows what is still ready to assign.</p>
+        </div>
+        <Button onClick={() => openAdd("income")}>
+          <BadgeDollarSign className="h-4 w-4" aria-hidden="true" /> Record paycheck
+        </Button>
       </div>
-
-      {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-danger">{error}</p>}
-      {result && (
-        <Card className="border border-green-200 bg-green-50/70">
-          <div className="flex items-start gap-3">
-            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-positive text-white"><Check aria-hidden="true" /></span>
-            <div className="flex-1">
-              <h2 className="font-bold text-ink">Income assigned</h2>
-              <ul className="mt-3 space-y-2 text-sm">
-                {result.allocations.map((allocation) => (
-                  <li key={allocation.envelopeId} className="flex justify-between gap-3">
-                    <span>{envelopes.find((envelope) => envelope.id === allocation.envelopeId)?.name || "Envelope"}</span>
-                    <strong>{formatCurrency(allocation.amount)}</strong>
-                  </li>
-                ))}
-                <li className="flex justify-between gap-3 border-t border-green-200 pt-2">
-                  <span>Ready to assign</span><strong>{formatCurrency(result.remainder)}</strong>
-                </li>
-              </ul>
-              <Button className="mt-4" variant="outline" size="sm" onClick={undo} isLoading={saving}>Undo income</Button>
-            </div>
-          </div>
-        </Card>
-      )}
 
       <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
         <Card>
-          <div className="mb-5 flex items-center gap-3">
-            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-soft text-brand-strong"><BadgeDollarSign aria-hidden="true" /></span>
-            <div><h2 className="text-xl font-bold text-ink">Record income</h2><p className="text-sm text-ink-muted">Your saved plan runs immediately.</p></div>
+          <h2 className="text-xl font-bold text-ink">Paycheck preview</h2>
+          <p className="mt-1 text-sm text-ink-muted">See how a deposit would split before you record it.</p>
+          <div className="mt-4 space-y-4">
+            <Select
+              label="Deposit account"
+              value={accountId}
+              onChange={(event) => changeAccount(event.target.value)}
+              options={snapshot.accounts.map((account) => ({
+                value: account.id,
+                label: `${account.name} · ${formatCurrency(account.readyToAssign)} ready`,
+              }))}
+            />
+            <Input
+              label="Preview amount"
+              type="number"
+              inputMode="decimal"
+              value={previewAmount}
+              onChange={(event) => setPreviewAmount(event.target.value)}
+            />
+            <ul className="space-y-2 rounded-xl bg-surface-muted p-4 text-sm">
+              {preview.allocations.map((row) => (
+                <li key={row.envelopeId} className="flex justify-between gap-3">
+                  <span>{snapshot.envelopes.find((envelope) => envelope.id === row.envelopeId)?.name}</span>
+                  <strong className="tabular">{formatCurrency(row.amount)}</strong>
+                </li>
+              ))}
+              <li className="flex justify-between gap-3 border-t border-line pt-2 font-semibold">
+                <span>Ready to assign</span>
+                <span className="tabular">{formatCurrency(preview.remainder)}</span>
+              </li>
+            </ul>
           </div>
-          <form onSubmit={recordIncome} className="space-y-4">
-            <Select label="Deposit account" value={accountId} onChange={(event) => changeAccount(event.target.value)} options={accounts.map((account) => ({ value: account.id, label: `${account.name} · ${formatCurrency(account.balance)}` }))} />
-            <Input label="Amount" type="number" inputMode="decimal" min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="0.00" required />
-            <Input label="Description" value={description} onChange={(event) => setDescription(event.target.value)} required />
-            <Input label="Date" type="date" value={date} onChange={(event) => setDate(event.target.value)} required />
-            <Button type="submit" isLoading={saving} className="w-full">Record and assign income</Button>
-          </form>
-
-          {Number(amount) > 0 && (
-            <div className="mt-5 rounded-xl bg-surface-muted p-4" aria-live="polite">
-              <p className="text-sm font-semibold text-ink">Paycheck preview</p>
-              <ul className="mt-2 space-y-1 text-sm text-ink-secondary">
-                {preview.rows.map((row) => <li key={row.envelopeId} className="flex justify-between"><span>{envelopes.find((envelope) => envelope.id === row.envelopeId)?.name}</span><span>{formatCurrency(row.amount)}</span></li>)}
-                <li className="flex justify-between border-t border-line pt-1 font-semibold"><span>Ready to assign</span><span>{formatCurrency(preview.remainder)}</span></li>
-              </ul>
-            </div>
-          )}
         </Card>
 
         <Card>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div><h2 className="text-xl font-bold text-ink">Automatic allocation plan</h2><p className="text-sm text-ink-muted">Rules run top to bottom against the remaining paycheck.</p></div>
-            <Button size="sm" onClick={savePlan} isLoading={saving}><Save className="h-4 w-4" aria-hidden="true" /> Save plan</Button>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-bold text-ink">Automatic allocation plan</h2>
+              <p className="text-sm text-ink-muted">Rules run top to bottom against the remaining paycheck. Drag to reorder.</p>
+            </div>
+            <Button size="sm" onClick={save} isLoading={saving}>
+              <Save className="h-4 w-4" aria-hidden="true" /> Save
+            </Button>
           </div>
           <div className="mt-5 space-y-3">
-            {rules.map((rule, index) => (
-              <div key={`${rule.envelopeId}-${index}`} className="rounded-xl border border-line p-3">
-                <div className="grid gap-3 sm:grid-cols-[1fr_140px_120px_44px] sm:items-end">
-                  <Select label="Envelope" value={rule.envelopeId} onChange={(event) => updateRule(index, { envelopeId: event.target.value })} options={accountEnvelopes.map((envelope) => ({ value: envelope.id, label: envelope.name }))} />
-                  <Select label="Rule" value={rule.method} onChange={(event) => updateRule(index, { method: event.target.value as Rule["method"], value: event.target.value === "REMAINDER" ? 0 : rule.value })} options={[{ value: "FIXED", label: "Fixed $" }, { value: "PERCENT", label: "% remaining" }, { value: "REMAINDER", label: "All remaining" }]} />
-                  {rule.method === "REMAINDER" ? <div className="hidden sm:block" /> : <Input label={rule.method === "FIXED" ? "Amount" : "Percent"} type="number" inputMode="decimal" min="0" max={rule.method === "PERCENT" ? 100 : undefined} step="0.01" value={rule.value} onChange={(event) => updateRule(index, { value: Number(event.target.value) })} />}
-                  <button type="button" onClick={() => setRules(rules.filter((_, ruleIndex) => ruleIndex !== index))} aria-label="Remove allocation rule" className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-ink-muted hover:bg-red-50 hover:text-danger"><Trash2 className="h-4 w-4" aria-hidden="true" /></button>
-                </div>
-                {index < rules.length - 1 && <ArrowDown className="mx-auto mt-3 h-4 w-4 text-ink-muted" aria-hidden="true" />}
-              </div>
-            ))}
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+              <SortableContext items={rules.map((rule) => rule.envelopeId)} strategy={verticalListSortingStrategy}>
+                {rules.map((rule, index) => (
+                  <RuleCard
+                    key={rule.envelopeId}
+                    rule={rule}
+                    envelopes={accountEnvelopes.map((envelope) => ({ id: envelope.id, name: envelope.name }))}
+                    onChange={(patch) => setRules(rules.map((item, i) => (i === index ? { ...item, ...patch } : item)))}
+                    onRemove={() => setRules(rules.filter((_, i) => i !== index))}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
             {accountEnvelopes.length > rules.length && (
-              <Button variant="outline" className="w-full" onClick={addRule}><Plus className="h-4 w-4" aria-hidden="true" /> Add allocation rule</Button>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => {
+                  const available = accountEnvelopes.find((envelope) => !rules.some((rule) => rule.envelopeId === envelope.id));
+                  if (!available) return;
+                  setRules([
+                    ...rules,
+                    {
+                      envelopeId: available.id,
+                      method: "FIXED",
+                      value: available.monthlyTarget || 0,
+                      priority: rules.length,
+                    },
+                  ]);
+                }}
+              >
+                <Plus className="h-4 w-4" aria-hidden="true" /> Add allocation rule
+              </Button>
             )}
-            {!accountEnvelopes.length && <p className="rounded-xl bg-surface-muted p-4 text-sm text-ink-muted">Create a budget or goal for this account before adding rules.</p>}
+            {!accountEnvelopes.length && (
+              <p className="rounded-xl bg-surface-muted p-4 text-sm text-ink-muted">Create a budget or goal for this account before adding rules.</p>
+            )}
           </div>
         </Card>
       </div>
 
-      <section aria-labelledby="income-history">
-        <h2 id="income-history" className="text-xl font-bold text-ink">Recent income</h2>
+      <section>
+        <h2 className="text-xl font-bold text-ink">Recent income</h2>
         <div className="mt-3 divide-y divide-line rounded-2xl border border-line bg-surface">
-          {income.length ? income.map((item) => (
-            <div key={item.id} className="flex items-center justify-between gap-4 p-4">
-              <div className="min-w-0"><p className="truncate font-semibold text-ink">{item.description}</p><p className="text-sm text-ink-muted">{item.accountName} · {formatDate(item.date)}</p></div>
-              <strong className="text-positive">+{formatCurrency(item.amount)}</strong>
-            </div>
-          )) : <p className="p-6 text-center text-sm text-ink-muted">No income recorded yet.</p>}
+          {income.length ? (
+            income.map((item) => (
+              <div key={item.id} className="flex items-center justify-between gap-4 p-4">
+                <div className="min-w-0">
+                  <p className="truncate font-semibold text-ink">{item.description}</p>
+                  <p className="text-sm text-ink-muted">{item.accountName} · {formatDate(item.date)}</p>
+                </div>
+                <Amount value={item.amount} type="INCOME" />
+              </div>
+            ))
+          ) : (
+            <EmptyState compact title="No income recorded yet." />
+          )}
         </div>
       </section>
+    </div>
+  );
+}
+
+function RuleCard({
+  rule,
+  envelopes,
+  onChange,
+  onRemove,
+}: {
+  rule: SnapshotRule;
+  envelopes: { id: string; name: string }[];
+  onChange: (patch: Partial<SnapshotRule>) => void;
+  onRemove: () => void;
+}) {
+  const sortable = useSortable({ id: rule.envelopeId });
+  return (
+    <div
+      ref={sortable.setNodeRef}
+      style={{ transform: CSS.Transform.toString(sortable.transform), transition: sortable.transition }}
+      className="rounded-xl border border-line p-3"
+    >
+      <div className="grid gap-3 sm:grid-cols-[auto_1fr_140px_120px_44px] sm:items-end">
+        <button
+          type="button"
+          aria-label="Reorder rule"
+          className="flex h-11 w-11 items-center justify-center text-ink-muted"
+          {...sortable.attributes}
+          {...sortable.listeners}
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+        <Select
+          label="Envelope"
+          value={rule.envelopeId}
+          onChange={(event) => onChange({ envelopeId: event.target.value })}
+          options={envelopes.map((envelope) => ({ value: envelope.id, label: envelope.name }))}
+        />
+        <Select
+          label="Rule"
+          value={rule.method}
+          onChange={(event) =>
+            onChange({ method: event.target.value as AllocationMethod, value: event.target.value === "REMAINDER" ? 0 : rule.value })
+          }
+          options={[
+            { value: "FIXED", label: "Fixed $" },
+            { value: "PERCENT", label: "% remaining" },
+            { value: "REMAINDER", label: "All remaining" },
+          ]}
+        />
+        {rule.method === "REMAINDER" ? (
+          <div className="hidden sm:block" />
+        ) : (
+          <Input
+            label={rule.method === "FIXED" ? "Amount" : "Percent"}
+            type="number"
+            inputMode="decimal"
+            min={0}
+            max={rule.method === "PERCENT" ? 100 : undefined}
+            step="0.01"
+            value={rule.value}
+            onChange={(event) => onChange({ value: Number(event.target.value) })}
+          />
+        )}
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label="Remove allocation rule"
+          className="flex h-11 w-11 items-center justify-center rounded-lg text-ink-muted hover:bg-danger-soft hover:text-danger"
+        >
+          <Trash2 className="h-4 w-4" aria-hidden="true" />
+        </button>
+      </div>
     </div>
   );
 }

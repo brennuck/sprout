@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { AppError } from "@/lib/errors";
+import { invalidateOwners } from "@/lib/cache";
 
 export type RecurringFrequencyValue = "WEEKLY" | "MONTHLY";
 
@@ -314,7 +315,7 @@ export async function processDueRecurringContributions(options?: {
       recurringEnabled: true,
       nextRecurringAt: { lte: now },
     },
-    select: { id: true },
+    select: { id: true, userId: true },
     orderBy: { nextRecurringAt: "asc" },
     take: options?.scheduleLimit ?? 200,
   });
@@ -322,12 +323,14 @@ export async function processDueRecurringContributions(options?: {
   let applied = 0;
   let insufficient = 0;
   const occurrenceLimit = options?.occurrencesPerSchedule ?? 52;
+  const touchedOwners = new Set<string>();
 
   for (const envelope of due) {
     for (let occurrence = 0; occurrence < occurrenceLimit; occurrence += 1) {
       const result = await applyOneRecurringContribution(envelope.id, now);
       if (result === "APPLIED") {
         applied += 1;
+        touchedOwners.add(envelope.userId);
         continue;
       }
       if (result === "INSUFFICIENT") insufficient += 1;
@@ -335,5 +338,6 @@ export async function processDueRecurringContributions(options?: {
     }
   }
 
+  invalidateOwners(touchedOwners);
   return { applied, insufficient, schedulesChecked: due.length };
 }

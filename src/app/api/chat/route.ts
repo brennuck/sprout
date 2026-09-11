@@ -1,368 +1,615 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
+import OpenAI from "openai";
 import { validateRequest } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { AppError } from "@/lib/errors";
+import { getBudgetSnapshot, upcomingBills } from "@/lib/data/snapshot";
 import {
+  createLedgerAccount,
   createLedgerTransaction,
   createLedgerTransfer,
-  deleteLedgerTransaction,
-  createLedgerAccount,
   deleteLedgerAccount,
+  deleteLedgerTransaction,
+  fundEnvelope,
+  moveEnvelopeMoney,
+  unassignEnvelopeMoney,
 } from "@/lib/services/ledger";
-import OpenAI from "openai";
+import { archiveEnvelope, createEnvelope, setFocusGoal } from "@/lib/services/envelopes";
+import { markBillPaid } from "@/lib/services/bills";
+import { ledgerDate } from "@/lib/validation";
+import { formatCurrency } from "@/lib/utils";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
 
 const chatSchema = z.object({
-  message: z.string().min(1, "Message is required"),
-  history: z.array(z.object({
-    role: z.enum(["user", "assistant"]),
-    content: z.string(),
-  })).optional().default([]),
+  message: z.string().optional(),
+  history: z
+    .array(
+      z.object({
+        role: z.enum(["user", "assistant"]),
+        content: z.string(),
+      }),
+    )
+    .optional()
+    .default([]),
+  confirm: z
+    .object({
+      id: z.string(),
+      name: z.string(),
+      args: z.record(z.unknown()),
+    })
+    .optional(),
 });
 
-// Bud's system prompt
-const BUD_SYSTEM_PROMPT = `You are Bud, a friendly and helpful personal gardener who helps users manage their finances in the Sprout budgeting app.
+const BUD_SYSTEM_PROMPT = `You are Bud, a friendly personal gardener who helps users manage envelope budgets in Sprout.
 
-Your personality:
-- Warm, friendly, and encouraging
-- Use gardening metaphors when talking about finances (money "growing", "planting seeds" for savings, "harvesting" for income, "weeds" for unnecessary expenses)
-- Keep responses concise and helpful (1-2 short paragraphs max)
-- You speak casually but professionally
+Personality:
+- Warm, encouraging, and concise (1–2 short paragraphs)
+- Use light gardening metaphors when they help, never when they confuse
+- Speak casually but clearly
 
-You can perform these actions for the user:
-1. ADD TRANSACTIONS - When user mentions spending or receiving money, use add_transaction
-2. CREATE ACCOUNTS - When user wants a new account, use create_account
-3. TRANSFER MONEY - When user wants to move money between accounts, use transfer_money
-4. DELETE TRANSACTIONS - When user wants to remove a transaction, use delete_transaction
-5. DELETE ACCOUNTS - When user wants to close/remove an account, use delete_account
+You can:
+- Add expenses and income (use envelope IDs from context)
+- Transfer between accounts
+- Fund, move, or unassign envelope money
+- Create envelopes and set a focus goal
+- Mark a bill paid
+- Read the current snapshot
 
-IMPORTANT RULES:
-- Always confirm what you're about to do before doing it, OR do it and confirm what you did
-- If info is missing (like which account), ask the user
-- Use the account IDs provided in the context, not names
-- For expenses, amount should be positive (the system handles the sign)
-- Be helpful and proactive - if user says "I spent $50 at Target", just add it!
+Rules:
+- Use the IDs provided in context, never invent IDs
+- Amounts are always positive; the ledger handles signs
+- If a required field is missing, ask one short question
+- Do not claim you deleted, archived, or closed something until the user confirms the card
+- Saved goal progress never changes when spending is tagged as hypothetical impact`;
 
-Current user context will be provided with their accounts and recent transactions.`;
+const DESTRUCTIVE = new Set(["delete_transaction", "delete_account", "archive_envelope"]);
 
-// OpenAI function definitions
-const functions: OpenAI.Chat.ChatCompletionCreateParams.Function[] = [
+const tools: OpenAI.Chat.ChatCompletionTool[] = [
   {
-    name: "add_transaction",
-    description: "Add a new transaction (expense or income) to an account",
-    parameters: {
-      type: "object",
-      properties: {
-        accountId: {
-          type: "string",
-          description: "The ID of the account to add the transaction to",
+    type: "function",
+    function: {
+      name: "add_expense",
+      description: "Record an expense against a cash account and optional envelope",
+      parameters: {
+        type: "object",
+        properties: {
+          accountId: { type: "string" },
+          amount: { type: "number" },
+          description: { type: "string" },
+          envelopeId: { type: "string" },
+          date: { type: "string", description: "YYYY-MM-DD" },
+          goalImpactEnvelopeId: { type: "string" },
         },
-        amount: {
-          type: "number",
-          description: "The amount of the transaction (positive number)",
-        },
-        description: {
-          type: "string",
-          description: "Description of the transaction (e.g., 'Groceries at Walmart')",
-        },
-        type: {
-          type: "string",
-          enum: ["EXPENSE", "INCOME"],
-          description: "Whether this is an expense or income",
-        },
-        date: {
-          type: "string",
-          description: "Date of transaction in ISO format (defaults to today if not specified)",
-        },
+        required: ["accountId", "amount", "description"],
       },
-      required: ["accountId", "amount", "description", "type"],
     },
   },
   {
-    name: "create_account",
-    description: "Create a new account for the user",
-    parameters: {
-      type: "object",
-      properties: {
-        name: {
-          type: "string",
-          description: "Name of the account (e.g., 'Emergency Fund', 'Vacation Savings')",
+    type: "function",
+    function: {
+      name: "add_income",
+      description: "Record income; the paycheck plan runs automatically",
+      parameters: {
+        type: "object",
+        properties: {
+          accountId: { type: "string" },
+          amount: { type: "number" },
+          description: { type: "string" },
+          date: { type: "string" },
         },
-        type: {
-          type: "string",
-          enum: ["SAVINGS", "BUDGET", "ALLOWANCE", "RETIREMENT", "STOCK"],
-          description: "Type of account",
-        },
-        startingBalance: {
-          type: "number",
-          description: "Initial balance for the account (defaults to 0)",
-        },
+        required: ["accountId", "amount", "description"],
       },
-      required: ["name", "type"],
     },
   },
   {
-    name: "transfer_money",
-    description: "Transfer money between two accounts",
-    parameters: {
-      type: "object",
-      properties: {
-        fromAccountId: {
-          type: "string",
-          description: "The ID of the account to transfer FROM",
+    type: "function",
+    function: {
+      name: "transfer",
+      description: "Move cash between two accounts",
+      parameters: {
+        type: "object",
+        properties: {
+          fromAccountId: { type: "string" },
+          toAccountId: { type: "string" },
+          amount: { type: "number" },
+          description: { type: "string" },
         },
-        toAccountId: {
-          type: "string",
-          description: "The ID of the account to transfer TO",
-        },
-        amount: {
-          type: "number",
-          description: "Amount to transfer (positive number)",
-        },
-        description: {
-          type: "string",
-          description: "Note for the transfer",
-        },
+        required: ["fromAccountId", "toAccountId", "amount"],
       },
-      required: ["fromAccountId", "toAccountId", "amount"],
     },
   },
   {
-    name: "delete_transaction",
-    description: "Delete a transaction by its ID",
-    parameters: {
-      type: "object",
-      properties: {
-        transactionId: {
-          type: "string",
-          description: "The ID of the transaction to delete",
+    type: "function",
+    function: {
+      name: "fund_envelope",
+      description: "Assign ready-to-assign cash into an envelope",
+      parameters: {
+        type: "object",
+        properties: {
+          envelopeId: { type: "string" },
+          amount: { type: "number" },
         },
+        required: ["envelopeId", "amount"],
       },
-      required: ["transactionId"],
     },
   },
   {
-    name: "delete_account",
-    description: "Delete an account and all its transactions",
-    parameters: {
-      type: "object",
-      properties: {
-        accountId: {
-          type: "string",
-          description: "The ID of the account to delete",
+    type: "function",
+    function: {
+      name: "move_money",
+      description: "Move assigned money from one envelope to another in the same account",
+      parameters: {
+        type: "object",
+        properties: {
+          fromEnvelopeId: { type: "string" },
+          toEnvelopeId: { type: "string" },
+          amount: { type: "number" },
+        },
+        required: ["fromEnvelopeId", "toEnvelopeId", "amount"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "unassign",
+      description: "Return money from an envelope to ready-to-assign",
+      parameters: {
+        type: "object",
+        properties: {
+          envelopeId: { type: "string" },
+          amount: { type: "number" },
+        },
+        required: ["envelopeId", "amount"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "create_envelope",
+      description: "Create a budget, sinking fund, or goal",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          kind: { type: "string", enum: ["BUDGET", "SINKING_FUND", "GOAL"] },
+          accountId: { type: "string" },
+          monthlyTarget: { type: "number" },
+          targetAmount: { type: "number" },
+        },
+        required: ["name", "kind", "accountId"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "set_focus_goal",
+      description: "Set or clear the user's focus goal",
+      parameters: {
+        type: "object",
+        properties: {
+          goalEnvelopeId: { type: "string", description: "Null or omit to clear" },
         },
       },
-      required: ["accountId"],
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "mark_bill_paid",
+      description: "Post a due scheduled bill as paid",
+      parameters: {
+        type: "object",
+        properties: {
+          billId: { type: "string" },
+          amount: { type: "number" },
+        },
+        required: ["billId"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "get_snapshot",
+      description: "Read current ready-to-assign, envelopes, goals, and upcoming bills",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "delete_transaction",
+      description: "Delete a transaction. Requires user confirmation.",
+      parameters: {
+        type: "object",
+        properties: { transactionId: { type: "string" } },
+        required: ["transactionId"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "delete_account",
+      description: "Delete an account. Requires user confirmation.",
+      parameters: {
+        type: "object",
+        properties: { accountId: { type: "string" } },
+        required: ["accountId"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "archive_envelope",
+      description: "Archive an envelope. Requires user confirmation.",
+      parameters: {
+        type: "object",
+        properties: { envelopeId: { type: "string" } },
+        required: ["envelopeId"],
+      },
     },
   },
 ];
 
-// Execute function calls
-async function executeFunction(
-  name: string,
-  args: Record<string, unknown>,
-  userId: string
-): Promise<{ success: boolean; message: string; data?: unknown }> {
-  try {
-    switch (name) {
-      case "add_transaction": {
-        const amount = args.amount as number;
-        const type = args.type as "EXPENSE" | "INCOME";
-        const result = await createLedgerTransaction({
-          actorId: userId,
-          accountId: args.accountId as string,
-          amount,
-          description: args.description as string,
-          type,
-          date: args.date ? new Date(args.date as string) : undefined,
-        });
+type StreamEvent =
+  | { type: "text"; delta: string }
+  | { type: "action"; message: string; success: boolean }
+  | { type: "confirm"; id: string; name: string; args: Record<string, unknown>; summary: string }
+  | { type: "done"; actionPerformed: boolean }
+  | { type: "error"; message: string };
 
-        return {
-          success: true,
-          message: `Added ${type.toLowerCase()} of $${amount.toFixed(2)} for "${args.description}"`,
-          data: result,
-        };
-      }
+function num(value: unknown) {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
 
-      case "create_account": {
-        const newAccount = await createLedgerAccount({
-          actorId: userId,
-          name: args.name as string,
-          type: args.type as "SAVINGS" | "BUDGET" | "ALLOWANCE" | "RETIREMENT" | "STOCK",
-          startingBalance: (args.startingBalance as number) || 0,
-        });
+function str(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
 
-        return {
-          success: true,
-          message: `Created new ${(args.type as string).toLowerCase()} account "${args.name}"${args.startingBalance ? ` with $${(args.startingBalance as number).toFixed(2)}` : ""}`,
-          data: newAccount,
-        };
-      }
+async function compactSnapshot(userId: string) {
+  const snapshot = await getBudgetSnapshot(userId);
+  const bills = upcomingBills(snapshot, 21);
+  return {
+    readyToAssign: snapshot.totals.readyToAssign,
+    cash: snapshot.totals.cash,
+    accounts: snapshot.accounts.map((account) => ({
+      id: account.id,
+      name: account.name,
+      balance: account.balance,
+      readyToAssign: account.readyToAssign,
+    })),
+    envelopes: snapshot.envelopes.map((envelope) => ({
+      id: envelope.id,
+      name: envelope.name,
+      kind: envelope.kind,
+      accountId: envelope.accountId,
+      balance: envelope.balance,
+      monthlyTarget: envelope.monthlyTarget,
+      targetAmount: envelope.targetAmount,
+    })),
+    focusGoalId: snapshot.focusGoalId,
+    bills: bills.map((bill) => ({
+      id: bill.id,
+      description: bill.description,
+      amount: bill.amount,
+      nextDueAt: bill.nextDueAt,
+      type: bill.type,
+    })),
+  };
+}
 
-      case "transfer_money": {
-        const [fromAccount, toAccount] = await Promise.all([
-          prisma.account.findUnique({ where: { id: args.fromAccountId as string } }),
-          prisma.account.findUnique({ where: { id: args.toAccountId as string } }),
-        ]);
-        const amount = args.amount as number;
-        await createLedgerTransfer({
-          actorId: userId,
-          fromAccountId: args.fromAccountId as string,
-          toAccountId: args.toAccountId as string,
-          amount,
-          description: (args.description as string) || undefined,
-        });
-
-        return {
-          success: true,
-          message: `Transferred $${amount.toFixed(2)} from ${fromAccount?.name || "source"} to ${toAccount?.name || "destination"}`,
-        };
-      }
-
-      case "delete_transaction": {
-        const transaction = await prisma.transaction.findUnique({
-          where: { id: args.transactionId as string },
-        });
-        if (!transaction) {
-          return { success: false, message: "Transaction not found" };
-        }
-        await deleteLedgerTransaction(userId, args.transactionId as string);
-
-        return {
-          success: true,
-          message: `Deleted transaction "${transaction.description}"`,
-        };
-      }
-
-      case "delete_account": {
-        const account = await prisma.account.findUnique({ where: { id: args.accountId as string } });
-
-        if (!account) {
-          return { success: false, message: "Account not found" };
-        }
-
-        await deleteLedgerAccount(userId, args.accountId as string);
-
-        return {
-          success: true,
-          message: `Deleted account "${account.name}" and all its transactions`,
-        };
-      }
-
-      default:
-        return { success: false, message: "Unknown action" };
-    }
-  } catch (error) {
-    console.error("Function execution error:", error);
-    return { success: false, message: "Failed to perform action" };
+function confirmSummary(name: string, args: Record<string, unknown>) {
+  switch (name) {
+    case "delete_transaction":
+      return `Delete this transaction? This can be undone from Activity.`;
+    case "delete_account":
+      return `Delete this account and its history?`;
+    case "archive_envelope":
+      return `Archive this envelope? Assigned money stays until you return it.`;
+    default:
+      return `Confirm ${name} ${JSON.stringify(args)}`;
   }
 }
 
-export async function POST(request: Request) {
+async function executeTool(
+  userId: string,
+  name: string,
+  args: Record<string, unknown>,
+): Promise<{ success: boolean; message: string; data?: unknown }> {
   try {
-    const { user } = await validateRequest();
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    switch (name) {
+      case "add_expense": {
+        const amount = num(args.amount);
+        await createLedgerTransaction({
+          actorId: userId,
+          accountId: str(args.accountId),
+          amount,
+          description: str(args.description),
+          type: "EXPENSE",
+          date: args.date ? ledgerDate(str(args.date)) : undefined,
+          envelopeId: args.envelopeId ? str(args.envelopeId) : null,
+          goalImpactEnvelopeId: args.goalImpactEnvelopeId ? str(args.goalImpactEnvelopeId) : null,
+        });
+        return { success: true, message: `Logged ${formatCurrency(amount)} for ${str(args.description)}` };
+      }
+      case "add_income": {
+        const amount = num(args.amount);
+        await createLedgerTransaction({
+          actorId: userId,
+          accountId: str(args.accountId),
+          amount,
+          description: str(args.description) || "Paycheck",
+          type: "INCOME",
+          date: args.date ? ledgerDate(str(args.date)) : undefined,
+        });
+        return { success: true, message: `Recorded ${formatCurrency(amount)} of income` };
+      }
+      case "transfer": {
+        const amount = num(args.amount);
+        await createLedgerTransfer({
+          actorId: userId,
+          fromAccountId: str(args.fromAccountId),
+          toAccountId: str(args.toAccountId),
+          amount,
+          description: str(args.description) || undefined,
+        });
+        return { success: true, message: `Moved ${formatCurrency(amount)} between accounts` };
+      }
+      case "fund_envelope": {
+        const amount = num(args.amount);
+        await fundEnvelope(userId, str(args.envelopeId), amount);
+        return { success: true, message: `Assigned ${formatCurrency(amount)}` };
+      }
+      case "move_money": {
+        const amount = num(args.amount);
+        await moveEnvelopeMoney(userId, str(args.fromEnvelopeId), str(args.toEnvelopeId), amount);
+        return { success: true, message: `Moved ${formatCurrency(amount)} between envelopes` };
+      }
+      case "unassign": {
+        const amount = num(args.amount);
+        await unassignEnvelopeMoney(userId, str(args.envelopeId), amount);
+        return { success: true, message: `Returned ${formatCurrency(amount)} to ready to assign` };
+      }
+      case "create_envelope": {
+        const envelope = await createEnvelope({
+          actorId: userId,
+          name: str(args.name),
+          kind: str(args.kind) as "BUDGET" | "SINKING_FUND" | "GOAL",
+          accountId: str(args.accountId),
+          monthlyTarget: args.monthlyTarget ? num(args.monthlyTarget) : null,
+          targetAmount: args.targetAmount ? num(args.targetAmount) : null,
+        });
+        return { success: true, message: `Created ${envelope.name}`, data: { id: envelope.id } };
+      }
+      case "set_focus_goal": {
+        const id = args.goalEnvelopeId ? str(args.goalEnvelopeId) : null;
+        await setFocusGoal(userId, id);
+        return { success: true, message: id ? "Focus goal updated" : "Focus goal cleared" };
+      }
+      case "mark_bill_paid": {
+        await markBillPaid(userId, str(args.billId), args.amount === undefined ? undefined : num(args.amount));
+        return { success: true, message: "Bill marked paid" };
+      }
+      case "get_snapshot": {
+        const snapshot = await compactSnapshot(userId);
+        return { success: true, message: "Snapshot loaded", data: snapshot };
+      }
+      case "delete_transaction": {
+        await deleteLedgerTransaction(userId, str(args.transactionId));
+        return { success: true, message: "Transaction deleted" };
+      }
+      case "delete_account": {
+        await deleteLedgerAccount(userId, str(args.accountId));
+        return { success: true, message: "Account deleted" };
+      }
+      case "archive_envelope": {
+        await archiveEnvelope(userId, str(args.envelopeId), true);
+        return { success: true, message: "Envelope archived" };
+      }
+      case "create_account": {
+        const account = await createLedgerAccount({
+          actorId: userId,
+          name: str(args.name),
+          type: (str(args.type) as "SAVINGS") || "SAVINGS",
+          startingBalance: num(args.startingBalance),
+        });
+        return { success: true, message: `Created ${account.name}` };
+      }
+      default:
+        return { success: false, message: "I do not know that action" };
     }
+  } catch (error) {
+    const message = error instanceof AppError ? error.message : "I could not complete that";
+    return { success: false, message };
+  }
+}
 
-    const body = await request.json();
-    const result = chatSchema.safeParse(body);
+function ndjsonResponse(run: (send: (event: StreamEvent) => void) => Promise<void>) {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (event: StreamEvent) => controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+      try {
+        await run(send);
+      } catch (error) {
+        send({
+          type: "error",
+          message: error instanceof Error ? error.message : "Bud could not answer right now",
+        });
+        send({ type: "done", actionPerformed: false });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+  });
+}
 
-    if (!result.success) {
-      return NextResponse.json({ error: result.error.errors[0].message }, { status: 400 });
-    }
+export async function POST(request: Request) {
+  const { user } = await validateRequest();
+  if (!user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
 
-    const { message, history } = result.data;
-
-    // Fetch user's financial context
-    const [accounts, recentTransactions] = await Promise.all([
-      prisma.account.findMany({
-        where: { userId: user.id },
-        select: { id: true, name: true, type: true, balance: true },
-      }),
-      prisma.transaction.findMany({
-        where: { account: { userId: user.id } },
-        orderBy: { date: "desc" },
-        take: 15,
-        include: { account: { select: { name: true } } },
-      }),
-    ]);
-
-    // Build context message
-    const contextMessage = `
-CURRENT USER: ${user.name || user.email}
-
-THEIR ACCOUNTS (use these IDs when performing actions):
-${accounts.map(a => `- "${a.name}" (${a.type}) | ID: ${a.id} | Balance: $${Number(a.balance).toFixed(2)}`).join('\n')}
-
-RECENT TRANSACTIONS:
-${recentTransactions.map(t => `- ${t.description}: $${Number(t.amount).toFixed(2)} (${t.type}) | ID: ${t.id} | Date: ${t.date.toLocaleDateString()} | Account: ${t.account.name}`).join('\n')}
-
-If user doesn't specify an account, use their first account (${accounts[0]?.name || "none"}, ID: ${accounts[0]?.id || "none"}) as default.
-`;
-
-    // Build messages array
-    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-      { role: "system", content: BUD_SYSTEM_PROMPT },
-      { role: "system", content: contextMessage },
-      ...history.map(h => ({ role: h.role as "user" | "assistant", content: h.content })),
-      { role: "user", content: message },
-    ];
-
-    // Call OpenAI with function calling
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages,
-      functions,
-      function_call: "auto",
-      max_tokens: 500,
-      temperature: 0.7,
+  const parsed = chatSchema.safeParse(await request.json());
+  if (!parsed.success) {
+    return new Response(JSON.stringify({ error: parsed.error.errors[0]?.message ?? "Invalid request" }), {
+      status: 400,
     });
+  }
 
-    const responseMessage = completion.choices[0]?.message;
-    let reply = responseMessage?.content || "";
+  const { message, history, confirm } = parsed.data;
+  if (!message?.trim() && !confirm) {
+    return new Response(JSON.stringify({ error: "Message is required" }), { status: 400 });
+  }
+
+  if (!process.env.OPENAI_API_KEY) {
+    return ndjsonResponse(async (send) => {
+      send({ type: "error", message: "Bud needs an OpenAI API key to chat." });
+      send({ type: "done", actionPerformed: false });
+    });
+  }
+
+  return ndjsonResponse(async (send) => {
     let actionPerformed = false;
 
-    // Handle function call if present
-    if (responseMessage?.function_call) {
-      const functionName = responseMessage.function_call.name;
-      const functionArgs = JSON.parse(responseMessage.function_call.arguments || "{}");
-
-      const functionResult = await executeFunction(functionName, functionArgs, user.id);
-      actionPerformed = functionResult.success;
-
-      // Get GPT to generate a natural response based on the function result
-      const followUpMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-        ...messages,
-        responseMessage as OpenAI.Chat.ChatCompletionMessageParam,
-        {
-          role: "function",
-          name: functionName,
-          content: JSON.stringify(functionResult),
-        },
-      ];
-
-      const followUpCompletion = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: followUpMessages,
-        max_tokens: 200,
-        temperature: 0.7,
-      });
-
-      reply = followUpCompletion.choices[0]?.message?.content || 
-        (functionResult.success ? `Done! ${functionResult.message}` : `Oops! ${functionResult.message}`);
+    if (confirm) {
+      const result = await executeTool(user.id, confirm.name, confirm.args);
+      send({ type: "action", message: result.message, success: result.success });
+      send({ type: "text", delta: result.success ? `Done — ${result.message}.` : `I could not do that: ${result.message}` });
+      send({ type: "done", actionPerformed: result.success });
+      return;
     }
 
-    return NextResponse.json({ 
-      reply,
-      actionPerformed,
+    const snapshot = await compactSnapshot(user.id);
+    const context = `CURRENT USER: ${user.name || user.email}
+
+READY TO ASSIGN: ${formatCurrency(snapshot.readyToAssign)} of ${formatCurrency(snapshot.cash)} cash
+
+ACCOUNTS:
+${snapshot.accounts.map((account) => `- ${account.name} | ID ${account.id} | ${formatCurrency(account.balance)} | ready ${formatCurrency(account.readyToAssign)}`).join("\n") || "(none)"}
+
+ENVELOPES:
+${snapshot.envelopes.map((envelope) => `- ${envelope.name} (${envelope.kind}) | ID ${envelope.id} | account ${envelope.accountId} | ${formatCurrency(envelope.balance)}`).join("\n") || "(none)"}
+
+FOCUS GOAL ID: ${snapshot.focusGoalId ?? "none"}
+
+UPCOMING BILLS:
+${snapshot.bills.map((bill) => `- ${bill.description} ${formatCurrency(bill.amount)} due ${bill.nextDueAt} | ID ${bill.id}`).join("\n") || "(none)"}
+
+Default account: ${snapshot.accounts[0]?.name ?? "none"} (${snapshot.accounts[0]?.id ?? "none"}).`;
+
+    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+      { role: "system", content: BUD_SYSTEM_PROMPT },
+      { role: "system", content: context },
+      ...history.map((item) => ({ role: item.role as "user" | "assistant", content: item.content })),
+      { role: "user", content: message!.trim() },
+    ];
+
+    const first = await openai.chat.completions.create({
+      model: MODEL,
+      messages,
+      tools,
+      stream: true,
+      temperature: 0.6,
+      max_tokens: 500,
     });
-  } catch (error) {
-    console.error("Chat error:", error);
-    return NextResponse.json({ error: "Failed to process message" }, { status: 500 });
-  }
+
+    const toolCalls: { id: string; name: string; arguments: string }[] = [];
+    for await (const chunk of first) {
+      const delta = chunk.choices[0]?.delta;
+      if (delta?.content) send({ type: "text", delta: delta.content });
+      for (const part of delta?.tool_calls ?? []) {
+        const index = part.index ?? 0;
+        toolCalls[index] ??= { id: "", name: "", arguments: "" };
+        if (part.id) toolCalls[index].id = part.id;
+        if (part.function?.name) toolCalls[index].name += part.function.name;
+        if (part.function?.arguments) toolCalls[index].arguments += part.function.arguments;
+      }
+    }
+
+    if (!toolCalls.length) {
+      send({ type: "done", actionPerformed: false });
+      return;
+    }
+
+    const assistantToolMessage: OpenAI.Chat.ChatCompletionMessageParam = {
+      role: "assistant",
+      content: null,
+      tool_calls: toolCalls.map((call) => ({
+        id: call.id || call.name,
+        type: "function" as const,
+        function: { name: call.name, arguments: call.arguments || "{}" },
+      })),
+    };
+
+    const toolMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
+    let waitingOnConfirm = false;
+
+    for (const call of toolCalls) {
+      let args: Record<string, unknown> = {};
+      try {
+        args = JSON.parse(call.arguments || "{}") as Record<string, unknown>;
+      } catch {
+        args = {};
+      }
+
+      if (DESTRUCTIVE.has(call.name)) {
+        send({
+          type: "confirm",
+          id: call.id || call.name,
+          name: call.name,
+          args,
+          summary: confirmSummary(call.name, args),
+        });
+        waitingOnConfirm = true;
+        toolMessages.push({
+          role: "tool",
+          tool_call_id: call.id || call.name,
+          content: JSON.stringify({ success: false, message: "Waiting for the user to confirm" }),
+        });
+        continue;
+      }
+
+      const result = await executeTool(user.id, call.name, args);
+      if (result.success && call.name !== "get_snapshot") actionPerformed = true;
+      send({ type: "action", message: result.message, success: result.success });
+      toolMessages.push({
+        role: "tool",
+        tool_call_id: call.id || call.name,
+        content: JSON.stringify(result),
+      });
+    }
+
+    if (waitingOnConfirm && !actionPerformed) {
+      send({ type: "done", actionPerformed: false });
+      return;
+    }
+
+    const follow = await openai.chat.completions.create({
+      model: MODEL,
+      messages: [...messages, assistantToolMessage, ...toolMessages],
+      stream: true,
+      temperature: 0.6,
+      max_tokens: 280,
+    });
+    for await (const chunk of follow) {
+      const delta = chunk.choices[0]?.delta?.content;
+      if (delta) send({ type: "text", delta });
+    }
+    send({ type: "done", actionPerformed });
+  });
 }

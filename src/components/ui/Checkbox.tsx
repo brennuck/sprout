@@ -1,37 +1,45 @@
 "use client";
 
-import { forwardRef, type InputHTMLAttributes } from "react";
+import { forwardRef, useId, type InputHTMLAttributes, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 export interface CheckboxProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "type"> {
-  label?: string;
+  label?: ReactNode;
+  description?: ReactNode;
 }
 
 const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(
-  ({ className, label, id, ...props }, ref) => {
-    const checkboxId = id || label?.toLowerCase().replace(/\s+/g, "-");
-    
+  ({ className, label, description, id, ...props }, ref) => {
+    const generatedId = useId();
+    const checkboxId = id || generatedId;
+
     return (
-      <label htmlFor={checkboxId} className="inline-flex items-center gap-2 cursor-pointer">
+      <label
+        htmlFor={checkboxId}
+        className="flex min-h-11 cursor-pointer items-start gap-3 rounded-xl text-sm text-ink has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60"
+      >
         <input
           type="checkbox"
           id={checkboxId}
           ref={ref}
           className={cn(
-            "w-4 h-4 rounded border-sage-300 text-sage-600",
-            "focus:ring-sage-400 focus:ring-offset-0",
-            "transition-colors duration-200",
-            className
+            "mt-0.5 h-5 w-5 flex-none cursor-pointer rounded border-line-strong bg-surface text-brand accent-[hsl(var(--brand))]",
+            "focus:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+            className,
           )}
           {...props}
         />
-        {label && <span className="text-sm text-sage-700">{label}</span>}
+        {(label || description) && (
+          <span className="flex flex-col">
+            {label && <span className="font-medium">{label}</span>}
+            {description && <span className="text-ink-muted">{description}</span>}
+          </span>
+        )}
       </label>
     );
-  }
+  },
 );
 
 Checkbox.displayName = "Checkbox";
 
 export { Checkbox };
-

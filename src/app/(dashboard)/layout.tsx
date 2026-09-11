@@ -1,42 +1,31 @@
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 import { validateRequest } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
-import { AppShellNav } from "@/components/dashboard/AppShellNav";
-import { Bud } from "@/components/dashboard/Bud";
+import { getBudgetSnapshot } from "@/lib/data/snapshot";
+import { SnapshotProvider } from "@/components/shell/SnapshotProvider";
+import { AppShell } from "@/components/shell/AppShell";
+import { AddSheetProvider } from "@/components/add/AddSheet";
+import { BudProvider } from "@/components/dashboard/Bud";
+import { KeyboardShortcuts } from "@/components/shell/KeyboardShortcuts";
+import { CatchUpJobs } from "@/components/shell/CatchUpJobs";
 
-export default async function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user } = await validateRequest();
+  if (!user) redirect("/signin");
 
-  if (!user) {
-    redirect("/signin");
-  }
-
-  // Get pending invitation count
-  const pendingInvitationCount = await prisma.invitation.count({
-    where: {
-      OR: [
-        { recipientId: user.id },
-        { email: user.email },
-      ],
-      status: "PENDING",
-    },
-  });
+  const snapshot = await getBudgetSnapshot(user.id);
 
   return (
-    <div className="min-h-screen lg:pl-64">
-      <AppShellNav user={user} pendingInvitations={pendingInvitationCount} />
-      <main
-        id="main-content"
-        className="mx-auto max-w-7xl px-4 pb-28 pt-5 sm:px-6 sm:pt-8 lg:px-8 lg:pb-10"
-      >
-        {children}
-      </main>
-      <Bud />
-    </div>
+    <SnapshotProvider snapshot={snapshot}>
+      <BudProvider>
+        <Suspense fallback={null}>
+          <AddSheetProvider>
+            <AppShell user={{ name: user.name, email: user.email }}>{children}</AppShell>
+            <KeyboardShortcuts />
+            <CatchUpJobs />
+          </AddSheetProvider>
+        </Suspense>
+      </BudProvider>
+    </SnapshotProvider>
   );
 }
-

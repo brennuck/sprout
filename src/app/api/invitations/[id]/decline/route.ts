@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateRequest } from "@/lib/auth";
+import { invalidateOwner } from "@/lib/cache";
 
 export async function POST(
   request: Request,
@@ -36,6 +37,7 @@ export async function POST(
       },
     });
 
+    invalidateOwner(user.id);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Decline invitation error:", error);
