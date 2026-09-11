@@ -5,7 +5,7 @@ export function Skeleton({ className }: { className?: string }) {
     <div
       aria-hidden="true"
       className={cn(
-        "animate-shimmer rounded-lg bg-[linear-gradient(90deg,hsl(var(--surface-muted))_25%,hsl(var(--border-subtle))_50%,hsl(var(--surface-muted))_75%)] bg-[length:200%_100%]",
+        "animate-pulse rounded-lg bg-surface-muted",
         className,
       )}
     />

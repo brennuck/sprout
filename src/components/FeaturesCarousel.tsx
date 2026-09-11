@@ -102,10 +102,7 @@ function FeatureTrack({ ariaHidden = false }: { ariaHidden?: boolean }) {
 
 export function FeaturesCarousel() {
   return (
-    <div className="relative">
-      <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-12 bg-gradient-to-r from-background via-background/80 to-transparent sm:w-20" />
-      <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-12 bg-gradient-to-l from-background via-background/80 to-transparent sm:w-20" />
-
+    <div>
       <div
         role="region"
         aria-roledescription="marquee"

@@ -63,7 +63,6 @@ const config: Config = {
         "dialog-in": "dialogIn var(--motion-instant) ease-out forwards",
         float: "float 6s ease-in-out infinite",
         in: "animateIn var(--motion-instant) ease-out",
-        shimmer: "shimmer 1.6s linear infinite",
       },
       keyframes: {
         fadeIn: { "0%": { opacity: "0" }, "100%": { opacity: "1" } },
@@ -86,10 +85,6 @@ const config: Config = {
         animateIn: {
           "0%": { opacity: "0", transform: "scale(0.95)" },
           "100%": { opacity: "1", transform: "scale(1)" },
-        },
-        shimmer: {
-          "0%": { backgroundPosition: "-200% 0" },
-          "100%": { backgroundPosition: "200% 0" },
         },
       },
     },

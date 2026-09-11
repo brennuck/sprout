@@ -129,7 +129,6 @@
 
   body {
     @apply min-h-screen bg-background text-ink;
-    background-image: radial-gradient(circle at top right, hsl(var(--brand-soft) / 0.65), transparent 38rem);
     font-feature-settings: "rlig" 1, "calt" 1, "tnum" 1;
   }
 

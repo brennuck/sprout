@@ -55,12 +55,7 @@ export default async function HomePage() {
       </nav>
 
       <main>
-        <section className="relative overflow-hidden">
-          <div className="pointer-events-none absolute inset-0 -z-10">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_0%,hsl(var(--brand-soft)),transparent_42%),radial-gradient(circle_at_85%_20%,hsl(94_28%_88%_/_0.9),transparent_36%)]" />
-            <div className="absolute inset-0 bg-[linear-gradient(to_right,hsl(var(--border-subtle)_/_0.45)_1px,transparent_1px),linear-gradient(to_bottom,hsl(var(--border-subtle)_/_0.45)_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:linear-gradient(to_bottom,black,transparent_85%)]" />
-          </div>
-
+        <section>
           <div className="mx-auto max-w-7xl px-4 pb-10 pt-16 sm:px-6 sm:pt-20 lg:px-8 lg:pt-24">
             <div className="mx-auto max-w-3xl text-center">
               <p className="font-display text-5xl font-bold tracking-tight text-brand-strong sm:text-6xl lg:text-7xl">
@@ -88,9 +83,8 @@ export default async function HomePage() {
             </div>
           </div>
 
-          <div className="relative mt-4 border-y border-line bg-brand-strong text-white">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,hsl(94_24%_42%_/_0.55),transparent_55%)]" />
-            <div className="relative mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
+          <div className="mt-4 border-y border-line bg-brand-strong text-white">
+            <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
               <div className="grid gap-8 lg:grid-cols-[0.9fr_1.1fr] lg:items-end">
                 <div>
                   <p className="text-sm font-semibold uppercase tracking-[0.18em] text-white/70">This month</p>
@@ -218,13 +212,8 @@ export default async function HomePage() {
           </div>
         </section>
 
-        <section className="relative overflow-hidden py-20 sm:py-24">
-          <div className="absolute inset-0 bg-gradient-to-br from-surface-inverse via-surface-inverse to-surface-inverse" />
-          <div className="absolute inset-0 bg-[linear-gradient(to_right,#fff1_1px,transparent_1px),linear-gradient(to_bottom,#fff1_1px,transparent_1px)] bg-[size:3rem_3rem]" />
-          <div className="absolute left-1/4 top-16 h-64 w-64 rounded-full bg-brand/25 blur-3xl" />
-          <div className="absolute bottom-10 right-1/4 h-80 w-80 rounded-full bg-warning/10 blur-3xl" />
-
-          <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <section className="bg-surface-inverse py-20 sm:py-24">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="mx-auto max-w-2xl text-center">
               <p className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.18em] text-white/80">
                 <Sparkles className="h-4 w-4" aria-hidden="true" />
